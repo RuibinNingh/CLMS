@@ -1,0 +1,51 @@
+/* 外壳：左侧导航 + 右侧页面。录入页是工作台（整屏高，内部分栏各自滚动），其余页面正常滚动。 */
+.app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
+.sidebar {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-3); border-right: 1px solid var(--border-1); background: var(--surface-1);
+  z-index: var(--z-sidebar);
+}
+.brand { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-2); text-decoration: none; color: var(--fg-1); }
+.brand__seal {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--r-sm);
+  background: var(--mark); color: var(--on-accent); font-family: var(--font-read); font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+[data-theme="dark"] .brand__seal { color: var(--surface-0); }
+.brand__name { display: grid; line-height: var(--leading-tight); }
+.brand__name b { font-size: var(--text-md); letter-spacing: 0.04em; }
+.brand__name small { font-size: var(--text-2xs); color: var(--fg-3); }
+.nav { display: grid; gap: var(--sp-0_5); }
+.nav a {
+  display: flex; align-items: center; gap: var(--sp-2); height: var(--ctl-md); padding: 0 var(--sp-2);
+  border-radius: var(--r-sm); color: var(--fg-2); text-decoration: none; font-size: var(--text-sm);
+}
+.nav a:hover { background: var(--surface-2); color: var(--fg-1); }
+.nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: var(--weight-medium); }
+.nav a svg { width: 17px; height: 17px; flex: none; }
+.nav .nav__badge { margin-left: auto; font-size: var(--text-2xs); color: var(--fg-3); }
+.sidebar__foot { margin-top: auto; padding: 0 var(--sp-2); font-size: var(--text-2xs); color: var(--fg-3); display: grid; gap: var(--sp-1); }
+.theme-toggle { justify-self: start; }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4) var(--sp-6) 0; }
+.topbar h1 { font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+.panel { display: none; padding: var(--sp-4) var(--sp-6) var(--sp-8); }
+.panel.is-active { display: block; }
+.main.is-workbench { height: 100vh; overflow: hidden; }
+.main.is-workbench .topbar { display: none; }
+.main.is-workbench .panel.is-active { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; }
+
+@media (max-width:760px){
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    position: sticky; height: auto; flex-direction: row; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3); border-right: 0; border-bottom: 1px solid var(--border-1); overflow-x: auto;
+  }
+  .brand, .sidebar__foot, .nav .nav__badge { display: none; }
+  .nav a { white-space: nowrap; gap: var(--sp-1); }
+  .nav { display: flex; gap: var(--sp-1); }
+  .nav a { padding: 0 var(--sp-2); }
+  .topbar, .panel { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .main.is-workbench { height: calc(100vh - 57px); }
+}

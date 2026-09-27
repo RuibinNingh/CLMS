@@ -1,0 +1,64 @@
+/* Agent 执行记录（run.js）、输入框附图、插话排队标记。颜色只用 token。 */
+.msg--run { width: 92%; }
+.run { display: grid; gap: var(--sp-2); }
+.run__log { overflow: hidden; border: 1px solid var(--border-1); border-radius: var(--r-md); background: var(--surface-1); box-shadow: var(--elev-1); }
+.run__head {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; padding: var(--sp-2) var(--sp-3);
+  border: 0; background: none; cursor: pointer; text-align: left; font-size: var(--text-sm); color: var(--fg-1);
+}
+.run__head strong { flex: 1; font-weight: var(--weight-semibold); }
+.run__count { font-size: var(--text-2xs); color: var(--fg-3); }
+.run__beacon { width: 10px; height: 10px; border: 2px solid var(--success); border-radius: var(--r-pill); background: var(--success-soft); flex: none; }
+.run[data-state="running"] .run__beacon { border-color: var(--info); background: var(--info-soft); box-shadow: var(--ring); animation: pulse var(--dur-flash) var(--ease-in-out) infinite; }
+.run[data-state="error"] .run__beacon { border-color: var(--danger); background: var(--danger-soft); }
+.run[data-state="stopped"] .run__beacon { border-color: var(--warning); background: var(--warning-soft); }
+.run__wait { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3) var(--sp-3); font-size: var(--text-xs); color: var(--fg-3); }
+.run__steps { display: grid; gap: var(--sp-0_5); padding: 0 var(--sp-2) var(--sp-2); border-top: 1px solid var(--border-1); padding-top: var(--sp-2); }
+.run__step {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: var(--sp-2); align-items: center;
+  padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); font-size: var(--text-xs); color: var(--fg-2);
+}
+.run__step[data-status="running"] { background: var(--info-soft); color: var(--info-fg); }
+.run__step[data-status="error"] { background: var(--danger-soft); color: var(--danger-fg); }
+.run__step[data-status="stopped"] { color: var(--fg-3); }
+.run__mark { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--border-2); border-radius: var(--r-pill); }
+.run__mark svg { width: 11px; height: 11px; color: var(--success); }
+.run__step[data-status="error"] .run__mark { border-color: var(--danger); }
+.run__step[data-status="error"] .run__mark svg { color: var(--danger); }
+.run__step[data-status="running"] .run__mark { border: 2px solid var(--border-2); border-top-color: var(--info); animation: activity-spin var(--dur-flash) linear infinite; }
+.run__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run__sum, .run__tasks { grid-column: 2; }
+.run__sum { color: var(--fg-3); font-size: var(--text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run__say { padding: var(--sp-1) var(--sp-2); font-size: var(--text-xs); color: var(--fg-2); white-space: pre-wrap; border-left: 2px solid var(--border-2); margin-left: var(--sp-2); }
+.run__tasks { display: grid; gap: var(--sp-1); margin-top: var(--sp-1); }
+.run__task {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--sp-2); align-items: center;
+  padding: var(--sp-1_5) var(--sp-2); border: 1px solid var(--border-1); border-radius: var(--r-sm); background: var(--surface-0); color: var(--fg-1);
+}
+.run__task b { font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run__pages { font-size: var(--text-2xs); color: var(--fg-3); }
+.run__task small { grid-column: 2 / -1; font-size: var(--text-2xs); color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run__task[data-status="running"] { border-color: var(--info); }
+.run__task[data-status="running"] small { color: var(--info-fg); }
+.run__task[data-status="done"] small { color: var(--success-fg); }
+.run__task[data-status="error"] { border-color: var(--danger); }
+.run__task[data-status="error"] small { color: var(--danger-fg); }
+@media (prefers-reduced-motion:reduce) {
+  .run[data-state="running"] .run__beacon, .run__step[data-status="running"] .run__mark { animation: none; }
+}
+
+.msg--user.is-queued .bubble { opacity: .7; }
+.msg--user.is-dropped .bubble { opacity: .45; }
+.composer__tools { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
+.composer__row { gap: var(--sp-2); }
+.composer__row > .composer__tools { margin-right: auto; }
+.composer__file { cursor: pointer; }
+.composer__attach { display: flex; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2) var(--sp-3) 0; }
+.attach { position: relative; display: block; }
+.attach img { width: 64px; height: 48px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border-1); }
+.attach__x {
+  position: absolute; top: calc(var(--sp-1) * -1); right: calc(var(--sp-1) * -1); display: grid; place-items: center; width: 18px; height: 18px;
+  padding: 0; border: 0; border-radius: var(--r-pill); background: var(--fg-2); color: var(--surface-1); cursor: pointer;
+}
+.attach__x svg { width: 11px; height: 11px; }
+.sheet__empty { max-width: 30em; margin: var(--sp-10) auto; text-align: center; color: var(--fg-3); font-size: var(--text-sm); }

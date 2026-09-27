@@ -1,0 +1,52 @@
+.rv { display: grid; gap: var(--sp-6); max-width: 1000px; }
+.rv__plan { padding: var(--sp-5); display: grid; gap: var(--sp-4); }
+.rv__head { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.rv__head h2, .rv__sessions h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.rv__opts { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+.rv__genres { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
+.rv__fill { display: inline-flex; align-items: center; gap: var(--sp-1_5); font-size: var(--text-sm); color: var(--fg-2); }
+.rv__sum { font-size: var(--text-sm); color: var(--fg-2); }
+.rv__sum b { color: var(--fg-1); }
+.rv__pick { display: grid; gap: var(--sp-1); max-height: 360px; overflow: auto; padding-right: var(--sp-1); }
+.rv__pick li { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1_5) var(--sp-2); border-radius: var(--r-sm); background: var(--surface-0); font-size: var(--text-sm); }
+.rv__what { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rv__confirm { display: flex; justify-content: flex-end; }
+.rv__sessions { display: grid; gap: var(--sp-3); }
+.rv__list { display: grid; gap: var(--sp-2); }
+.rv__row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); flex-wrap: wrap; }
+.rv__row a { text-decoration: none; }
+.rv__rowmain { flex: 1; min-width: 12em; display: grid; font-size: var(--text-sm); }
+.rv__rowmain .muted { font-size: var(--text-xs); }
+.rv__meter { width: 90px; }
+.rv__prog { font-size: var(--text-xs); color: var(--fg-2); min-width: 6em; }
+.rv__grading { display: grid; gap: var(--sp-3); max-width: 860px; }
+.rv__ghead { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.rv__ghead h2 { font-size: var(--text-lg); font-weight: var(--weight-semibold); flex: 1; }
+.rv__ghead a { text-decoration: none; }
+.rv__tip { font-size: var(--text-sm); }
+.rv__paper { padding: var(--sp-6) var(--sp-8); display: grid; gap: var(--sp-2); }
+.rv__mat { padding: var(--sp-2) 0 var(--sp-3); border-bottom: 1px dashed var(--border-2); }
+.rv__mat summary { cursor: pointer; font-weight: var(--weight-bold); padding: var(--sp-1) 0; }
+.rv__mat[open] summary { margin-bottom: var(--sp-2); }
+.rv__sec { font-size: var(--text-md); padding-top: var(--sp-3); }
+.rv__q { display: grid; gap: var(--sp-2); padding: var(--sp-3) 0 var(--sp-4); border-bottom: 1px dashed var(--border-1); }
+.rv__q.is-done { opacity: .8; }
+.rv__qhead { display: flex; align-items: center; gap: var(--sp-2); font-family: var(--font-sans); font-size: var(--text-xs); }
+.rv__n { font-family: var(--font-read); font-weight: var(--weight-bold); font-size: var(--text-lg); min-width: 1.6em; }
+.rv__stem { white-space: pre-wrap; }
+.rv__reveal { justify-self: start; font-family: var(--font-sans); }
+.rv__ans { padding-left: var(--sp-3); border-left: 2px solid var(--mark-soft); }
+.rv__grades { display: flex; gap: var(--sp-1_5); align-items: center; flex-wrap: wrap; font-family: var(--font-sans); }
+.gbtn {
+  height: var(--ctl-md); min-width: 4.5em; padding: 0 var(--sp-3); border-radius: var(--r-pill); cursor: pointer;
+  border: 1px solid var(--border-2); background: var(--surface-1); font-size: var(--text-sm);
+}
+.gbtn:hover { border-color: var(--fg-3); }
+.gbtn[aria-pressed="true"][data-grade="0"] { background: var(--danger-soft); border-color: var(--danger); color: var(--danger-fg); }
+.gbtn[aria-pressed="true"][data-grade="1"] { background: var(--warning-soft); border-color: var(--warning); color: var(--warning-fg); }
+.gbtn[aria-pressed="true"][data-grade="2"], .gbtn[aria-pressed="true"][data-grade="3"] { background: var(--success-soft); border-color: var(--success); color: var(--success-fg); }
+.rv__end { justify-self: start; }
+@media (max-width:760px){ .rv__paper { padding: var(--sp-4) var(--sp-3); } .rv__meter { display: none; } }
+.rv__ai { cursor: pointer; }
+.rv__note { margin-top: var(--sp-1); font-size: var(--text-xs); color: var(--fg-2); }
+.rv__noteinput { margin-top: var(--sp-1); font-size: var(--text-xs); }

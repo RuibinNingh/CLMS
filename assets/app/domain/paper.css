@@ -1,0 +1,29 @@
+/* 纸面：原文（衬线、首行缩进）、答题横线、默写下划线、红笔答案、蓝笔作答。 */
+.paper {
+  background: var(--paper); border: 1px solid var(--paper-edge); border-radius: var(--r-md);
+  font-family: var(--font-read); font-size: var(--text-read); line-height: var(--leading-read);
+}
+.passage p { text-indent: var(--indent); margin-bottom: var(--sp-1); }
+.passage--poem p { text-indent: 0; text-align: center; letter-spacing: 0.08em; }
+.passage .passage__note { text-indent: 0; font-size: var(--text-sm); color: var(--fg-2); }
+.passage__n {
+  display: inline-block; width: 1.4em; margin-left: calc(-1 * var(--indent)); margin-right: var(--sp-2); text-indent: 0;
+  font-family: var(--font-sans); font-size: var(--text-2xs); color: var(--fg-3); text-align: right;
+}
+.paper-empty { color: var(--fg-3); }
+.ruled { display: grid; }
+.ruled i { display: block; height: var(--rule-gap); border-bottom: 1px solid var(--rule); }
+.blank-line { font-family: var(--font-read); line-height: var(--leading-read); }
+.blank {
+  display: inline-block; min-width: 4em; margin: 0 var(--sp-0_5); border-bottom: 1.5px solid var(--fg-1);
+  text-align: center; vertical-align: baseline; line-height: var(--leading-tight); padding: 0 var(--sp-1);
+}
+.blank[data-w="5"] { min-width: 5em; } .blank[data-w="6"] { min-width: 6em; } .blank[data-w="7"] { min-width: 7em; }
+.blank[data-w="8"] { min-width: 8em; } .blank[data-w="9"] { min-width: 9em; } .blank[data-w="10"] { min-width: 10em; }
+.blank[data-w="11"] { min-width: 11em; } .blank[data-w="12"] { min-width: 12em; } .blank[data-w="13"] { min-width: 13em; }
+.blank[data-w="14"] { min-width: 14em; } .blank[data-w="15"] { min-width: 15em; } .blank[data-w="16"] { min-width: 16em; }
+.blank sup { font-family: var(--font-sans); font-size: var(--text-2xs); color: var(--fg-3); }
+.blank b { color: var(--mark); font-weight: var(--weight-regular); }
+.blank--target { border-bottom-color: var(--accent); border-bottom-width: 2px; }
+.red-pen { color: var(--mark); white-space: pre-wrap; font-family: var(--font-read); line-height: var(--leading-read); }
+.blue-pen { color: var(--pen); white-space: pre-wrap; font-family: var(--font-read); }

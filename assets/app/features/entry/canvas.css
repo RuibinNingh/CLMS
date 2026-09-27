@@ -1,0 +1,96 @@
+/* 草稿纸面：板块、材料、小题卡、留白横线、默写。AI 刚改过的字段闪一次（data-flash）。 */
+.canvas { display: grid; gap: var(--sp-10); }
+.grp { display: grid; gap: var(--sp-3); }
+.grp + .grp { padding-top: var(--sp-8); border-top: 1px dashed var(--border-2); }
+.grp__head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-family: var(--font-sans); }
+.grp__genre {
+  border: 0; background: transparent; font-size: var(--text-md); font-weight: var(--weight-semibold); color: var(--fg-1);
+  padding: var(--sp-0_5) var(--sp-1); border-radius: var(--r-xs); cursor: pointer;
+}
+.grp__genre:hover:not(:disabled) { background: var(--surface-2); }
+.grp__genre:disabled { cursor: default; opacity: 1; appearance: none; }
+.grp__count { font-size: var(--text-xs); color: var(--fg-3); }
+.grp__entries { display: grid; }
+.grp__add { justify-self: start; }
+
+.ta {
+  display: block; width: 100%; padding: var(--sp-1) var(--sp-2); border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; resize: none; overflow: hidden; font-size: var(--text-sm); line-height: var(--leading-ui);
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.ta:hover:not([readonly]) { border-color: var(--border-1); }
+.ta:focus { outline: none; border-color: var(--accent); background: var(--surface-1); box-shadow: var(--ring); }
+.ta[readonly] { cursor: default; }
+.ta::placeholder, .paper input::placeholder { color: var(--fg-3); opacity: .7; }
+.ta--read { font-family: var(--font-read); font-size: var(--text-read); line-height: var(--leading-read); }
+.ta--red { color: var(--mark); font-family: var(--font-read); font-size: var(--text-md); line-height: var(--leading-read); }
+.ta--blue { color: var(--pen); font-family: var(--font-read); font-size: var(--text-md); }
+.paper input { font: inherit; border: 1px solid transparent; background: transparent; border-radius: var(--r-xs); padding: 0 var(--sp-1); }
+.paper input:hover:not([readonly]) { border-color: var(--border-1); }
+.paper input:focus { outline: none; border-color: var(--accent); background: var(--surface-1); }
+
+.mat { display: grid; gap: var(--sp-2); }
+.mat__line { display: flex; justify-content: center; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.mat__title input { text-align: center; font-size: var(--text-xl); font-weight: var(--weight-bold); width: 12em; letter-spacing: 0.06em; }
+.mat__by input { text-align: center; font-size: var(--text-sm); color: var(--fg-2); width: 7em; }
+.mat__text { position: relative; }
+.mat__text:not(.is-open) { max-height: 15.5em; overflow: hidden; mask-image: linear-gradient(to bottom, black 62%, transparent); }
+.mat__read { padding: 0 var(--sp-2); }
+.mat__toggle { justify-self: center; }
+
+.q { padding: var(--sp-4) 0 var(--sp-3); border-top: 1px dashed var(--border-1); border-radius: var(--r-sm); }
+.grp__entries > .q:first-child, .grp__entries > .dict:first-child { border-top: 0; }
+.q__head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-family: var(--font-sans); }
+.paper .q__no { width: 3em; text-align: right; font-family: var(--font-read); font-weight: var(--weight-bold); font-size: var(--text-lg); }
+.qtype {
+  height: 24px; padding: 0 var(--sp-2); border: 0; border-radius: var(--r-pill); cursor: pointer;
+  background: var(--accent-soft); color: var(--accent); font-size: var(--text-xs); font-weight: var(--weight-medium);
+}
+.qtype--empty { background: var(--warning-soft); color: var(--warning-fg); }
+.qtype:disabled { cursor: default; opacity: 1; appearance: none; }
+.q__score { display: inline-flex; align-items: center; font-size: var(--text-xs); color: var(--fg-3); }
+.paper .q__score input { width: 3.2em; text-align: right; font-family: var(--font-sans); font-size: var(--text-xs); }
+.q__tools { margin-left: auto; }
+.q__slot { border-radius: var(--r-pill); }
+.q__stem { margin-top: var(--sp-1); padding-left: var(--sp-8); }
+.q__blank { display: flex; align-items: flex-end; gap: var(--sp-3); padding-left: var(--sp-8); margin: var(--sp-1) 0 var(--sp-2); }
+.ruled--mini { flex: 1; min-height: 1px; }
+.ruled--mini i { height: 11px; }
+.stepper { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; font-family: var(--font-sans); font-size: var(--text-xs); color: var(--fg-2); }
+.stepper span { min-width: 5em; text-align: center; }
+.q__ans, .q__extra { display: grid; gap: var(--sp-0_5); padding-left: var(--sp-8); }
+.q__label { display: flex; align-items: center; gap: var(--sp-1_5); padding-left: var(--sp-2); font-family: var(--font-sans); font-size: var(--text-2xs); color: var(--fg-3); }
+.q__more { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); padding-left: var(--sp-10); margin-top: var(--sp-1); font-family: var(--font-sans); }
+.q__more > span:has(.q__extra) { flex-basis: 100%; }
+.q__more .q__extra { padding-left: 0; margin-left: calc(var(--sp-2) * -1); }
+.q__hint { font-family: var(--font-sans); font-size: var(--text-xs); color: var(--fg-3); }
+
+.dict { display: grid; gap: var(--sp-2); padding: var(--sp-4) 0; border-top: 1px dashed var(--border-1); border-radius: var(--r-sm); }
+.dict__preview { font-size: var(--text-read); padding: 0 var(--sp-2); }
+.dict__edit { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.dict__edit .ta { font-size: var(--text-sm); color: var(--fg-2); background: var(--surface-sunken, var(--surface-0)); }
+.dict__blanks { display: grid; gap: var(--sp-1); padding-left: var(--sp-2); font-family: var(--font-sans); }
+.dict__blank { display: flex; align-items: center; gap: var(--sp-2); }
+.dict__n {
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; flex: none;
+  background: var(--surface-2); font-size: var(--text-2xs); color: var(--fg-2);
+}
+.paper .dict__ans { flex: 1; max-width: 20em; color: var(--mark); font-family: var(--font-read); font-size: var(--text-md); border-bottom: 1px solid var(--rule); border-radius: 0; }
+.dict__meta { display: flex; gap: var(--sp-2); align-items: center; padding-left: var(--sp-2); font-family: var(--font-sans); }
+.paper .dict__src { max-width: 16em; height: var(--ctl-sm); min-height: var(--ctl-sm); font-family: var(--font-sans); font-size: var(--text-xs); border-color: var(--border-1); }
+.dict__kind { width: auto; height: var(--ctl-sm); min-height: var(--ctl-sm); font-size: var(--text-xs); padding-top: 0; padding-bottom: 0; }
+
+[data-flash] { animation: flash var(--dur-flash) var(--ease-out); }
+@keyframes flash { 0%, 30% { background: var(--flash); } 100% { background: transparent; } }
+
+@media (max-width:760px){
+  .q__stem, .q__blank, .q__ans, .q__extra { padding-left: 0; }
+  .q__more { padding-left: var(--sp-2); }
+  .mat__title input { width: 100%; }
+}
+
+/* 画布末尾「添加板块」：低调的虚线入口 */
+.canvas__more { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-4); padding-top: var(--sp-4);
+  border-top: 1px dashed var(--border-2); color: var(--fg-3); }
+.canvas__more svg { width: 16px; height: 16px; }
+.canvas__more .select { width: auto; border-style: dashed; background: transparent; color: var(--fg-2); }

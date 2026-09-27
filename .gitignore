@@ -1,0 +1,13 @@
+# Local CLMS vault data (API configuration, ledger, drafts and uploaded images)
+/语文/.clms/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+!.env.example

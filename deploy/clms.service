@@ -1,0 +1,18 @@
+# systemd 用户服务示例：长期在一台 Linux 机器上运行 CLMS。
+#   cp deploy/clms.service ~/.config/systemd/user/ && systemctl --user enable --now clms
+# 按实际路径修改 WorkingDirectory 与 --vault。默认只监听本机；v0.1 没有登录保护，不要改成 0.0.0.0。
+[Unit]
+Description=CLMS 语文错题本
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/CLMS
+ExecStart=/usr/bin/python3 %h/CLMS/clms_engine.py --vault %h/CLMS serve --port 8472
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,124 @@
+/* CLMS 设计 token（唯一允许出现颜色字面量的样式文件）。
+ * 名称与尺度沿用 OMRS 的 tokens.css（surface / fg / border / accent / 状态色 / sp / ctl / r / dur / z），
+ * 另加语文专用的几个：
+ *   --paper        草稿画布、复习卷的纸面
+ *   --mark         批改红：只用于参考答案（老师的红笔），不作错误提示
+ *   --pen          学生笔迹蓝：学生自己的作答
+ *   --rule         答题横线（稿纸绿）
+ *   --flash        AI 刚改过的字段的一次性底色
+ *   --genre-*      四个板块的识别色（小圆点与细边，不大面积铺色）
+ * 浅色写在 :root，深色写在 [data-theme="dark"]（沿用 OMRS 暖石墨）。
+ */
+:root{
+  --surface-0:#f3f4f1;
+  --surface-1:#ffffff;
+  --surface-2:#e9ebe6;
+  --surface-3:#d3d8cf;
+  --fg-1:#1b2130;
+  --fg-2:#4d5566;
+  --fg-3:#636b7a;
+  --border-1:#e1e4dd;
+  --border-2:#cdd2c8;
+  --accent:#27457a;
+  --accent-hover:#1d3761;
+  --accent-soft:rgba(39,69,122,0.08);
+  --on-accent:#ffffff;
+  --focus-ring:#3b6fd4;
+
+  --danger:#b42318;  --danger-soft:rgba(180,35,24,0.09);  --danger-fg:#912018;
+  --success:#2f7d4f; --success-soft:rgba(47,125,79,0.10); --success-fg:#23603c;
+  --warning:#8f6410; --warning-soft:rgba(176,124,20,0.12); --warning-fg:#6f4d0b;
+  --info:#27457a;    --info-soft:rgba(39,69,122,0.09);    --info-fg:#1d3761;
+
+  --paper:#fdfdfb;
+  --paper-edge:#dcdfd6;
+  --mark:#b8322a;
+  --mark-soft:rgba(184,50,42,0.06);
+  --pen:#23489a;
+  --rule:#a9c1af;
+  --flash:rgba(59,111,212,0.16);
+
+  --genre-modern:#27457a;
+  --genre-classical:#7a4b1f;
+  --genre-poetry:#2f7d4f;
+  --genre-dictation:#7b3f7a;
+
+  --elev-0:none;
+  --elev-1:0 1px 2px rgba(27,33,48,0.05);
+  --elev-2:0 6px 20px rgba(27,33,48,0.10);
+  --elev-3:0 18px 48px rgba(27,33,48,0.18);
+  --scrim:rgba(20,24,32,0.38);
+}
+
+[data-theme="dark"]{
+  --surface-0:#141311;
+  --surface-1:#211f1d;
+  --surface-2:#2e2b27;
+  --surface-3:#433f38;
+  --fg-1:#f0ebe3;
+  --fg-2:#b3aa9e;
+  --fg-3:#958d81;
+  --border-1:rgba(236,231,223,0.13);
+  --border-2:rgba(236,231,223,0.23);
+  --accent:#a9bde0;
+  --accent-hover:#c3d2ec;
+  --accent-soft:rgba(169,189,224,0.13);
+  --on-accent:#141311;
+  --focus-ring:#8fb0d8;
+
+  --danger:#e59a8c;  --danger-soft:rgba(229,154,140,0.18);  --danger-fg:#efb2a6;
+  --success:#8fbf9a; --success-soft:rgba(143,191,154,0.18); --success-fg:#a8d3b2;
+  --warning:#dcb06a; --warning-soft:rgba(220,176,106,0.18); --warning-fg:#e8c793;
+  --info:#a9bde0;    --info-soft:rgba(169,189,224,0.16);    --info-fg:#c3d2ec;
+
+  --paper:#1b1a18;
+  --paper-edge:rgba(236,231,223,0.14);
+  --mark:#ee9f93;
+  --mark-soft:rgba(238,159,147,0.08);
+  --pen:#a9bde0;
+  --rule:rgba(143,191,154,0.34);
+  --flash:rgba(143,176,216,0.22);
+
+  --genre-modern:#a9bde0;
+  --genre-classical:#d9b489;
+  --genre-poetry:#8fbf9a;
+  --genre-dictation:#d2a6d1;
+
+  --elev-1:0 1px 3px rgba(0,0,0,0.40);
+  --elev-2:0 6px 20px rgba(0,0,0,0.45);
+  --elev-3:0 20px 56px rgba(0,0,0,0.55);
+  --scrim:rgba(10,9,7,0.62);
+}
+
+:root{
+  --text-2xs:11px; --text-xs:12px; --text-sm:13px; --text-md:14px;
+  --text-lg:16px;  --text-xl:20px; --text-2xl:28px; --text-display:40px;
+  --text-read:16px;                        /* 原文、题干 */
+  --leading-tight:1.2; --leading-ui:1.5; --leading-read:1.9;
+  --weight-regular:400; --weight-medium:500; --weight-semibold:600; --weight-bold:700;
+  --font-sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  --font-read:'Noto Serif SC','Noto Serif CJK SC','Source Han Serif SC','Songti SC','STSong','SimSun',serif;
+  --font-mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+
+  --sp-0_5:2px; --sp-1:4px; --sp-1_5:6px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:20px;  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px;
+  --rule-gap:34px;                         /* 答题横线行距，≈ 答题卡 9mm */
+
+  --ctl-sm:28px; --ctl-md:34px; --ctl-lg:42px;
+  --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  --dur-1:120ms; --dur-2:180ms; --dur-3:260ms; --dur-flash:1800ms;
+  --ease-out:cubic-bezier(.2,.8,.2,1); --ease-in-out:cubic-bezier(.4,0,.2,1);
+  --z-sticky:10; --z-sidebar:20; --z-dropdown:100; --z-drawer:200;
+  --z-modal:300; --z-toast:400; --z-tooltip:500;
+  --ring:0 0 0 3px var(--accent-soft);     /* 输入框聚焦光圈 */
+  --ring-line:0 0 0 1px var(--accent);      /* 选中卡片的描边 */
+  --indent:2em;                            /* 段首缩进（原文、题干） */
+  --chat-width:380px;
+  --sidebar-width:196px;
+}
+@media (max-width:760px){
+  :root{ --ctl-sm:40px; --ctl-md:40px; --ctl-lg:44px; --text-read:15px; }
+}
+@media (prefers-reduced-motion:reduce){
+  :root{ --dur-1:0ms; --dur-2:0ms; --dur-3:0ms; --dur-flash:0ms; }
+}

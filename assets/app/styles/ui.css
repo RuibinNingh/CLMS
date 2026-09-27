@@ -1,0 +1,87 @@
+/* 无业务的通用控件：按钮、输入、芯片、分段、卡片、提示条、对话框、吐司。 */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-1_5);
+  height: var(--ctl-md); padding: 0 var(--sp-3); border-radius: var(--r-sm);
+  border: 1px solid var(--border-2); background: var(--surface-1); color: var(--fg-1);
+  font-size: var(--text-sm); font-weight: var(--weight-medium); cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+.btn:hover { background: var(--surface-2); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn--ghost { border-color: transparent; background: transparent; color: var(--fg-2); }
+.btn--ghost:hover { background: var(--surface-2); color: var(--fg-1); }
+.btn--danger { color: var(--danger-fg); }
+.btn--sm { height: var(--ctl-sm); padding: 0 var(--sp-2); font-size: var(--text-xs); }
+.btn--lg { height: var(--ctl-lg); padding: 0 var(--sp-5); font-size: var(--text-md); }
+.btn--icon { width: var(--ctl-sm); padding: 0; height: var(--ctl-sm); }
+.btn svg { width: 16px; height: 16px; flex: none; }
+
+.input, .select, .textarea {
+  width: 100%; min-height: var(--ctl-md); padding: var(--sp-1_5) var(--sp-2);
+  border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface-1);
+  font-size: var(--text-sm);
+}
+.select { padding-right: var(--sp-6); }
+.textarea { resize: vertical; line-height: var(--leading-ui); }
+.input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.field { display: grid; gap: var(--sp-1); align-content: start; }
+.field > span { font-size: var(--text-xs); color: var(--fg-2); }
+.field small { color: var(--fg-3); font-size: var(--text-xs); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1); height: 22px; padding: 0 var(--sp-2);
+  border-radius: var(--r-pill); background: var(--surface-2); color: var(--fg-2);
+  font-size: var(--text-xs); white-space: nowrap;
+}
+.chip--ok { background: var(--success-soft); color: var(--success-fg); }
+.chip--warn { background: var(--warning-soft); color: var(--warning-fg); }
+.chip--bad { background: var(--danger-soft); color: var(--danger-fg); }
+.chip--info { background: var(--info-soft); color: var(--info-fg); }
+button.chip { border: 0; cursor: pointer; }
+button.chip:hover { color: var(--fg-1); }
+
+.genre-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--genre-modern); flex: none; }
+[data-genre="classical"] .genre-dot, .genre-dot[data-genre="classical"] { background: var(--genre-classical); }
+[data-genre="poetry"] .genre-dot, .genre-dot[data-genre="poetry"] { background: var(--genre-poetry); }
+[data-genre="dictation"] .genre-dot, .genre-dot[data-genre="dictation"] { background: var(--genre-dictation); }
+
+.seg { display: inline-flex; padding: var(--sp-0_5); border-radius: var(--r-sm); background: var(--surface-2); gap: var(--sp-0_5); }
+.seg button {
+  height: calc(var(--ctl-sm) - 4px); padding: 0 var(--sp-3); border: 0; border-radius: var(--r-xs);
+  background: transparent; color: var(--fg-2); font-size: var(--text-xs); cursor: pointer; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--surface-1); color: var(--fg-1); box-shadow: var(--elev-1); font-weight: var(--weight-medium); }
+
+.card { background: var(--surface-1); border: 1px solid var(--border-1); border-radius: var(--r-lg); }
+.callout { padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--info-soft); color: var(--info-fg); font-size: var(--text-sm); }
+.callout--warn { background: var(--warning-soft); color: var(--warning-fg); }
+.callout--bad { background: var(--danger-soft); color: var(--danger-fg); }
+.meter { height: 6px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--success); border-radius: inherit; }
+.meter[data-tone="low"] > i { background: var(--warning); }
+.meter[data-tone="mid"] > i { background: var(--info); }
+/* 宽度按 5% 一档，用 data-w 选择（不写 style= 属性） */
+.meter > i[data-w="0"] { width: 2%; } .meter > i[data-w="5"] { width: 5%; } .meter > i[data-w="10"] { width: 10%; }
+.meter > i[data-w="15"] { width: 15%; } .meter > i[data-w="20"] { width: 20%; } .meter > i[data-w="25"] { width: 25%; }
+.meter > i[data-w="30"] { width: 30%; } .meter > i[data-w="35"] { width: 35%; } .meter > i[data-w="40"] { width: 40%; }
+.meter > i[data-w="45"] { width: 45%; } .meter > i[data-w="50"] { width: 50%; } .meter > i[data-w="55"] { width: 55%; }
+.meter > i[data-w="60"] { width: 60%; } .meter > i[data-w="65"] { width: 65%; } .meter > i[data-w="70"] { width: 70%; }
+.meter > i[data-w="75"] { width: 75%; } .meter > i[data-w="80"] { width: 80%; } .meter > i[data-w="85"] { width: 85%; }
+.meter > i[data-w="90"] { width: 90%; } .meter > i[data-w="95"] { width: 95%; } .meter > i[data-w="100"] { width: 100%; }
+.empty { padding: var(--sp-10) var(--sp-6); text-align: center; color: var(--fg-3); font-size: var(--text-sm); }
+
+/* 吐司放顶部居中：录入页右下角是「入库」按钮，不能被挡住 */
+.toasts { position: fixed; top: var(--sp-3); left: 50%; transform: translateX(-50%); z-index: var(--z-toast); display: grid; gap: var(--sp-2); justify-items: center; pointer-events: none; }
+.toast {
+  min-width: 220px; max-width: 360px; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md);
+  background: var(--fg-1); color: var(--surface-1); font-size: var(--text-sm); box-shadow: var(--elev-2);
+}
+.toast--bad { background: var(--danger); color: var(--on-accent); }
+dialog.dlg { border: 0; padding: 0; border-radius: var(--r-lg); background: var(--surface-1); color: var(--fg-1); box-shadow: var(--elev-3); width: min(420px, calc(100vw - 32px)); }
+dialog.dlg::backdrop { background: var(--scrim); }
+.dlg__body { padding: var(--sp-5); display: grid; gap: var(--sp-2); }
+.dlg__body h3 { font-size: var(--text-lg); }
+.dlg__body p { color: var(--fg-2); font-size: var(--text-sm); }
+.dlg__foot { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: 0 var(--sp-5) var(--sp-5); }

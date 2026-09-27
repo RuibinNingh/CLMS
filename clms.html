@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLMS · 语文错题本</title>
+<link rel="stylesheet" href="/assets/app/styles/tokens.css">
+<link rel="stylesheet" href="/assets/app/styles/index.css">
+<script>try{var t=localStorage.getItem('clms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="#/dashboard">
+      <span class="brand__seal">语</span>
+      <span class="brand__name"><b>CLMS</b><small>语文错题本</small></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="页面"></nav>
+    <div class="sidebar__foot">
+      <button class="btn btn--ghost btn--sm theme-toggle" data-action="app.theme" id="theme-toggle">切换深色</button>
+      <span id="app-version"></span>
+    </div>
+  </aside>
+  <main class="main" id="main">
+    <header class="topbar"><h1 id="page-title"></h1></header>
+    <section class="panel" id="panel-dashboard" aria-label="概览"></section>
+    <section class="panel" id="panel-entry" aria-label="录入"></section>
+    <section class="panel" id="panel-library" aria-label="题库"></section>
+    <section class="panel" id="panel-review" aria-label="复习"></section>
+    <section class="panel" id="panel-settings" aria-label="设置"></section>
+  </main>
+</div>
+<script type="module" src="/assets/app/main.js?v=0.2.0"></script>
+</body>
+</html>
