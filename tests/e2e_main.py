@@ -3,15 +3,19 @@
     python3 tests/e2e_main.py              # 断言主路径
     python3 tests/e2e_main.py --shots DIR  # 另存关键截图（桌面、深色、手机）
 
-覆盖：空状态 → 一次选三张图（每张一份）→ 后台排队识别（Agent：主代理委派子代理，执行记录里有子代理卡片）
-→ 对话修订（改动清单、画布闪一次、回到修改前）→ 手工改留白 → 入库 → 第二份含标点不同的重复默写（去重、记又错一次）
-→ 题库（复习记录补记 / 改评 / 撤销 / 恢复，删除后恢复）→ 按时间预算排复习 → 评分 → 写反馈 → 拍照交给 AI 批改
-→ 新对话里让 AI 停用一道题 → 打印 → 概览 → 设置里导出脱敏源码。
+覆盖：空状态 → 一次选三张图 → 准备阶段（调页序：箭头 + 拖动、旋转、每页说明）→ 每页一份分别识别
+→ 时间线（思考块、工具调用展开参数 / 结果、delegate 子代理卡片展开子代理自己的时间线）
+→ 对话修订（流式：思考 / 参数逐字出现；改动清单、画布闪一次、回到修改前）→ 录入记录（重命名、回收站、恢复）→ 手工改留白 → 入库 → 第二份含标点不同的重复默写（去重、记又错一次）
+→ 题库（复习记录补记 / 改评 / 撤销 / 恢复，删除后恢复；分面筛选；按篇；批量加入复习）
+→ 复习页（自选题 + 推荐、移除 / 放回、从题库挑题、按时间预算）→ 评分 → 写反馈 → 打印
+→ 复习助手（提问、打分并采用、写反馈先暂存评分时写入）→ 复习记录分页
+→ 新对话里让 AI 停用一道题 → 概览 → 设置里导出脱敏源码。
 需要 playwright（自带 Chromium）。测试图片用 Pillow 现画，不依赖外部文件。
 """
 
 import argparse
 import os
+os.environ.setdefault("FAKE_AI_STREAM_DELAY", "0.02")   # 让流式看得见
 import shutil
 import sys
 import tempfile
@@ -58,37 +62,69 @@ def run(shots=None):
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+            ctx = browser.new_context(viewport={"width": 1600, "height": 900})
             pg = ctx.new_page()
             pg.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             pg.on("console", lambda m: m.type in ("error", "warning") and errors.append(f"{m.type}: {m.text}"))
+            pg.on("response", lambda r: r.status >= 400 and errors.append(f"HTTP {r.status} {r.request.method} {r.url}"))
 
             pg.goto(base + "/#/entry")
-            pg.wait_for_selector(".drop")
+            pg.wait_for_selector(".launch")
             shot(pg, "01-empty.png")
-            pg.set_input_files('input[data-change="entry.files"]', images)
-            pg.wait_for_selector(".pending")
-            pg.click('[data-action="entry.upload"][data-arg="split"]')
-            pg.wait_for_function("document.querySelectorAll('.qchip[data-tone=\"ready\"]').length === 3", timeout=30000)
-            pg.click('.qchip:has-text("老街的灯")')
+            pg.fill("#composer", "只录阅读和默写")                       # 先写话、再传图：话留着当补充说明
+            pg.set_input_files('.launch input[data-change="entry.files"]', images)
+            pg.wait_for_selector(".launch__pages")
+            assert pg.locator(".launch__pages .page[data-page]").count() == 3
+            assert pg.input_value("#composer") == "只录阅读和默写"
+            order = lambda: pg.eval_on_selector_all(".page[data-page] img", "els => els.map(e => e.getAttribute('src'))")  # noqa: E731
+            before = order()
+            pg.click('[data-action="entry.pageMove"][data-arg="2:-1"]')
+            pg.wait_for_function("arr => document.querySelectorAll('.page[data-page] img')[1].getAttribute('src') === arr[2]", arg=before)
+            moved = order()
+            pg.drag_and_drop('.page[data-page="0"]', '.page[data-page="1"]')
+            pg.wait_for_function("arr => document.querySelectorAll('.page[data-page] img')[0].getAttribute('src') === arr[1]", arg=moved)
+            pg.click('[data-action="entry.pageRotate"][data-arg="0"]')
+            pg.wait_for_selector('.page[data-page="0"] .page__img[data-rotate="90"]')
+            pg.fill('.page[data-page="1"] .page__note', "题目页")
+            pg.press('.page[data-page="1"] .page__note', "Tab")
+            pg.wait_for_function("document.querySelector('.hrow.is-active') !== null")
+            shot(pg, "01b-stage.png")
+            pg.click('[data-action="entry.split"][data-arg="each"]')
+            pg.click('[data-action="entry.start"][data-arg="split"]')
+            pg.wait_for_selector(".chat .composer__box", timeout=15000)           # 输入框落到对话底部
+            pg.wait_for_selector('.tl__item[data-role="user"].is-enter')
+            pg.wait_for_function("document.querySelectorAll('.hrow[data-tone=\"ready\"]').length === 3", timeout=60000)
+            pg.click('.hrow:has-text("老街的灯") .hrow__main')
             pg.wait_for_selector('.grp[data-genre="modern"]')
-            pg.click(".run__head >> nth=0")
-            pg.wait_for_selector(".run__task")
-            tasks = pg.eval_on_selector_all(".run__task", "els => els.map(e => e.dataset.status)")
-            assert tasks == ["done", "done"], tasks
+            assert pg.locator(".tl .blk--thinking").count() >= 2
+            assert pg.locator('.blk--tool[data-tool="delegate"] .task[data-status="done"]').count() == 2
+            pg.click('.blk--tool[data-tool="delegate"] .task__head >> nth=0')
+            pg.wait_for_selector(".task__log .blk--tool")
+            pg.click('.blk--tool[data-tool="delegate"] > .blk__head')
+            assert '"tasks"' in pg.inner_text('.blk--tool[data-tool="delegate"] .blk__pre >> nth=0')
             shot(pg, "02-workbench.png")
-            pg.click(".run__head >> nth=0")
 
+            os.environ["FAKE_AI_STREAM_DELAY"] = "0.12"          # 这一步放慢流式，保证能看到「进行中」的中间态（机器忙时事件会成批到达）
             pg.fill("#composer", "第7题答案按采分点重写，留白 9 行")
             pg.keyboard.press("Enter")
-            pg.wait_for_selector(".msg__changes", timeout=15000)
+            pg.wait_for_selector('.blk--thinking[data-status="streaming"], .blk--tool[data-status="preparing"], .blk--text.is-live', timeout=20000)
+            shot(pg, "02b-streaming.png")
+            os.environ["FAKE_AI_STREAM_DELAY"] = "0.02"
+            pg.wait_for_selector(".blk--run .msg__changes", timeout=40000)
             assert pg.input_value("#composer") == ""
-            labels = pg.eval_on_selector_all(".msg__changes .chip", "els => els.map(e => e.textContent.trim())")
-            assert labels == ["第 7 题 · 答案", "第 7 题 · 留白"], labels
+            want = ["第 7 题 · 答案", "第 7 题 · 留白"]
+            pg.wait_for_function("want => JSON.stringify([...document.querySelectorAll('.blk--run .msg__changes .chip')]"
+                                 ".map(e => e.textContent.trim())) === JSON.stringify(want)", arg=want, timeout=10000)
+            pg.hover(".gauge")
+            pg.wait_for_function("getComputedStyle(document.querySelector('.gauge__pop')).opacity === '1'")
+            pop = pg.inner_text(".gauge__pop")
+            assert "上下文" in pop and "tok/s" in pop and "主代理" in pop, pop
+            shot(pg, "02c-gauge.png")
+            pg.mouse.move(5, 5)
             pg.wait_for_selector("[data-flash]")
             shot(pg, "03-revised.png")
             assert "留白 9 行" in pg.inner_text('[data-anchor="g1|i2"]')
-            pg.click('.msg__changes [data-action="entry.restore"]')
+            pg.click('.blk--run .msg__changes [data-action="entry.restore"]')
             pg.wait_for_function("document.querySelector('[data-anchor=\"g1|i2\"]').innerText.includes('留白 7 行')")
 
             pg.click('[data-anchor="g1|i2"] [data-action="entry.lines"][data-arg="1"]')
@@ -98,7 +134,7 @@ def run(shots=None):
             pg.click('[data-action="entry.commit"]')
             pg.wait_for_selector(".sheet__foot.is-done")
 
-            pg.click('.qchip:has-text("山居秋暝")')
+            pg.click('.hrow:has-text("山居秋暝") .hrow__main')
             pg.wait_for_selector('.grp[data-genre="poetry"]')
             check = pg.inner_text(".sheet__check")
             assert "新增 2 题" in check and "1 题库里已有" in check, check
@@ -106,6 +142,33 @@ def run(shots=None):
             pg.click('[data-action="entry.commit"]')
             pg.wait_for_selector(".sheet__foot.is-done")
             assert "1 题库里已有、记为又错一次" in pg.inner_text(".sheet__foot")
+            pg.click('.sheet__foot [data-action="entry.fresh"]')                # 入库后「录下一份」回到居中输入框
+            pg.wait_for_selector(".launch .launch__title")
+            pg.click('[data-action="entry.collapse"]')
+            pg.wait_for_selector('.entry[data-collapsed="true"] .hist[inert]')
+            pg.click('[data-action="app.nav"]')
+            pg.wait_for_selector('html[data-nav="mini"]')
+            pg.wait_for_timeout(400)
+            shot(pg, "03a-collapsed.png")
+            pg.click('.launch .hist-toggle')
+            pg.click('[data-action="app.nav"]')
+            pg.wait_for_selector('.entry[data-collapsed="false"]')
+            pg.hover('.hrow:has-text("咏雪")')
+            pg.click('.hrow:has-text("咏雪") [data-action="entry.renaming"]')
+            pg.fill(".hrow__rename", "咏雪 · 期中卷")
+            pg.press(".hrow__rename", "Enter")
+            pg.wait_for_selector('.hrow:has-text("咏雪 · 期中卷")')
+            pg.hover('.hrow:has-text("期中卷")')
+            pg.click('.hrow:has-text("期中卷") [data-action="entry.trash"]')
+            pg.click('dialog.dlg button[value="yes"]')
+            pg.wait_for_function("!document.querySelector('.hist__list').innerText.includes('期中卷')")
+            pg.click('[data-action="entry.view"][data-arg="trash"]')
+            pg.wait_for_selector('.hrow:has-text("期中卷")')
+            pg.click('.hrow:has-text("期中卷") [data-action="entry.undiscard"]')
+            pg.wait_for_function("!document.querySelector('.hist__list').innerText.includes('期中卷')")
+            pg.click('[data-action="entry.view"][data-arg="all"]')
+            pg.wait_for_selector('.hrow:has-text("期中卷")')
+            shot(pg, "03b-history.png")
 
             pg.goto(base + "/#/library")
             pg.wait_for_selector(".row")
@@ -116,7 +179,10 @@ def run(shots=None):
             pg.select_option('.rec__add select[name="grade"]', "1")
             pg.click('.rec__add button')
             pg.wait_for_selector(".rec")
-            pg.select_option(".rec__grade", "3")
+            old_id = pg.get_attribute('.rec [data-action="lib.void"]', "data-arg")
+            pg.select_option(".rec__grade", "3")             # 改评会换成新的记录编号：等页面换上新编号再撤销
+            pg.wait_for_function("old => { const b = document.querySelector('.rec [data-action=\"lib.void\"]'); return b && b.dataset.arg !== old; }",
+                                 arg=old_id)
             pg.wait_for_function("document.querySelectorAll('.rec').length === 1 && document.querySelector('.rec__grade').value === '3'")
             pg.click('.rec [data-action="lib.void"]')
             pg.wait_for_selector('[data-action="lib.showVoided"]')
@@ -130,20 +196,48 @@ def run(shots=None):
             pg.click('[data-action="lib.delete"]')
             pg.click('dialog.dlg button[value="yes"]')
             pg.wait_for_function("document.querySelectorAll('.row').length === 7")
-            pg.select_option('select[data-arg="status"]', "deleted")
+            pg.click('[data-action="lib.facet"][data-arg="status:deleted"]')          # 分面筛选：已删除
             pg.wait_for_function("document.querySelectorAll('.row').length === 1")
             pg.click(".row")
             pg.click('[data-action="lib.restore"]')
             pg.wait_for_selector('[data-action="lib.delete"]')
-            pg.select_option('select[data-arg="status"]', "")
+            pg.click('[data-action="lib.facet"][data-arg="status:deleted"]')          # 再点一次取消
             pg.wait_for_function("document.querySelectorAll('.row').length === 8")
+            pg.click('[data-action="lib.facet"][data-arg="kind:recall"]')             # 记忆型 = 3 道默写
+            pg.wait_for_function("document.querySelectorAll('.row').length === 3")
+            pg.click('[data-action="lib.clear"]')
+            pg.wait_for_function("document.querySelectorAll('.row').length === 8")
+            pg.click('[data-action="lib.group"][data-arg="material"]')                # 按篇：两篇阅读 + 两个默写出处
+            pg.wait_for_function("document.querySelectorAll('.grpc').length === 4")
+            pg.click('[data-action="lib.selecting"]')
+            pg.click('.grpc:has-text("春望") [data-action="lib.pickGroup"]')
+            pg.wait_for_selector('.lib__batch b:has-text("已选 2 题")')
+            shot(pg, "04b-library-groups.png")
+            pg.click('[data-action="lib.batchReview"]')                              # 批量加入复习 → 复习页的自选题
 
-            pg.goto(base + "/#/review")
+            plan_ready = lambda: pg.wait_for_function("document.querySelector('.pl__row') && !document.querySelector('.pl__list.is-busy')")  # noqa: E731
+            pg.wait_for_selector('.pl__row .chip--ok')
+            plan_ready()
+            assert pg.locator('.pl__row .chip--ok:has-text("自选")').count() == 2
+            pg.click('[data-action="rv.budget"][data-arg="20"]')
+            plan_ready()
+            first = pg.get_attribute('.pl__row:has([data-action="rv.exclude"]) >> nth=0', "data-key")
+            pg.click(f'.pl__row[data-key="{first}"] [data-action="rv.exclude"]')        # 移除 → 别的题补位
+            pg.wait_for_function("id => !document.querySelector(`.pl__row[data-key='${id}']`) && document.querySelector('.pl__sum').innerText.includes('移除了 1 道')", arg=first)
+            pg.click('[data-action="rv.unexclude"]')
+            pg.wait_for_selector(f'.pl__row[data-key="{first}"]')
+            plan_ready()
+            pg.click('.pk__row [data-action="rv.pin"] >> nth=0')                      # 从题库挑一道
+            pg.wait_for_function("document.querySelectorAll('.pl__row .chip--ok').length === 3")
             pg.click('[data-action="rv.budget"][data-arg="60"]')
-            pg.click('[data-action="rv.plan"]')
-            pg.wait_for_selector(".rv__pick li")
+            pg.wait_for_function("document.querySelectorAll('.pl__row').length >= 7")
+            plan_ready()
+            planned = pg.locator(".pl__row").count()
+            pinned_jys = pg.locator('.pl__group:has-text("默写") .pl__row:has(.chip--ok):has-text("床前明月光")').count()
+            assert planned == 7 + pinned_jys, planned                               # 静夜思今天刚补记过：提前复习时跳过（除非是自选）
+            shot(pg, "05a-plan.png", full_page=True)
             pg.click('[data-action="rv.create"]')
-            pg.wait_for_selector(".rv__grading")
+            pg.wait_for_selector(".rv__grading .ai")
             pg.click(".rv__reveal >> nth=0")
             pg.click('.rv__grades >> nth=0 >> [data-grade="2"]')
             pg.wait_for_selector('.gbtn[aria-pressed="true"][data-grade="2"]')
@@ -157,23 +251,56 @@ def run(shots=None):
             pr.goto(base + href + "&answers=1")
             assert pr.locator(".lines div").count() > 20 and pr.locator(".blank").count() >= 2
             shot(pr, "06-print.png", full_page=True)
-            pg.set_input_files('input[data-change="rv.aiGrade"]', images[:1])
-            pg.wait_for_selector('.qchip.is-active:has-text("批改")', timeout=15000)
-            pg.wait_for_function("document.querySelector('.run[data-state=\"done\"]')", timeout=30000)
-            assert "review_grade" not in pg.inner_text(".chat__log")
-            pg.click(".run__head >> nth=0")
-            assert "批改" in pg.inner_text(".run__steps")
-            shot(pg, "06b-ai-grading.png")
-            pg.goto(base + "/#/review")
+
+            q2, q3 = ".rv__q >> nth=1", ".rv__q >> nth=2"                            # 复习助手：跟着点中的题
+            pg.click(f"{q2} >> .rv__stem")
+            pg.wait_for_selector(".rv__q.is-focus >> nth=0")
+            assert "第 2 题" in pg.inner_text(".ai__target")
+            pg.fill("#ai-composer", "这题从哪几方面想？")
+            pg.keyboard.press("Enter")
+            pg.wait_for_selector('.ai__msg--bot[data-status="done"]', timeout=20000)
+            assert "作用" in pg.inner_text(".ai__msg--bot >> nth=0")
+            assert pg.input_value("#ai-composer") == ""
+            pg.fill("#ai-composer", "我的作答：灯是线索，贯穿全文。")
+            pg.click('[data-action="rv.aiMode"][data-arg="grade"]')                   # 输入框里的作答 + 打分
+            pg.wait_for_selector(".ai__sug", timeout=20000)
+            assert "基本" in pg.inner_text(".ai__sug")
+            pg.click('[data-action="rv.aiAdopt"][data-arg$=":all"]')
+            pg.wait_for_selector(f'{q2} >> .gbtn[aria-pressed="true"][data-grade="2"]')
+            pg.wait_for_selector(f'{q2} >> .rv__note:has-text("漏了象征义")')
+            pg.click(f"{q3} >> .rv__stem")
+            pg.click('[data-action="rv.aiMode"][data-arg="feedback"]')               # 写反馈：还没评分 → 先暂存
+            pg.wait_for_selector('.ai__msg--bot[data-status="done"] .ai__sug', timeout=20000)
+            pg.click('[data-action="rv.aiAdopt"][data-arg$=":note"]')
+            pg.wait_for_selector(f"{q3} >> .rv__note.is-pending")
+            pg.click(f'{q3} >> [data-grade="3"]')
+            pg.wait_for_selector(f'{q3} >> .rv__note:not(.is-pending):has-text("作用题")')
+            shot(pg, "06b-assistant.png")
+            pg.click('[data-action="rv.back"]')
             pg.wait_for_selector(".rv__row")
-            assert "已评完" in pg.inner_text(".rv__row >> nth=0")
+            assert f"评了 3/{planned}" in pg.inner_text(".rv__row >> nth=0"), pg.inner_text(".rv__row >> nth=0")
+
+            pg.goto(base + "/#/library")                                               # 复习记录分页
+            pg.click('[data-action="lib.tab"][data-arg="history"]')
+            pg.wait_for_selector(".hst__row")
+            assert pg.locator(".hst__row").count() == 4, pg.locator(".hst__row").count()  # 补记 1 + 本次 3
+            pg.check('input[data-arg="note"]')
+            pg.wait_for_function("document.querySelectorAll('.hst__row').length === 3")
+            pg.click(".hst__row >> nth=0")
+            pg.wait_for_selector(".lib__detail")
+            shot(pg, "06c-history.png")
+            pg.uncheck('input[data-arg="note"]')
+            pg.click('[data-action="lib.tab"][data-arg="items"]')
 
             pg.goto(base + "/#/entry")
-            pg.click('[data-action="entry.newChat"]')
-            pg.wait_for_selector(".msg--note:has-text('空白对话')")
+            pg.click('.hist [data-action="entry.fresh"]')
+            pg.wait_for_function("document.querySelector('.launch:not(:has(.launch__pages))') && document.activeElement?.id === 'composer'")
             pg.fill("#composer", "停用 Q-000003")
             pg.keyboard.press("Enter")
-            pg.wait_for_function("document.querySelector('.run[data-state=\"done\"]')", timeout=30000)
+            pg.wait_for_selector('.chat__title:has-text("停用 Q-000003")', timeout=30000)   # 确认看的是这段新对话
+            pg.wait_for_selector('.blk--tool[data-tool="library_suspend"][data-status="done"]', timeout=30000)
+            pg.wait_for_selector('.blk--run[data-status="done"]', timeout=30000)
+            pg.click('.blk--tool[data-tool="library_suspend"] > .blk__head')
             assert "Q-000003 已停用" in pg.inner_text(".chat__log")
 
             pg.goto(base + "/#/dashboard")
@@ -195,8 +322,13 @@ def run(shots=None):
             mp = mobile.new_page()
             mp.on("pageerror", lambda e: errors.append(f"mobile pageerror: {e}"))
             mp.goto(base + "/#/entry")
-            mp.wait_for_selector(".qchip")
-            mp.click('.qchip:has-text("咏雪")')
+            mp.wait_for_selector(".chat__head, .launch")
+            mp.click(".hist-toggle")
+            mp.wait_for_selector('.entry[data-hist="open"] .hrow')
+            shot(mp, "08a-mobile-history.png")
+            mp.click('.hrow:has-text("期中卷") .hrow__main')
+            mp.wait_for_selector(".tl .blk--tool")                      # 窄屏打开草稿先看对话（执行过程）
+            mp.click('[data-action="entry.tab"][data-arg="draft"]')
             mp.wait_for_selector(".canvas")
             assert mp.evaluate("document.documentElement.scrollWidth") <= 390
             shot(mp, "08-mobile-draft.png")

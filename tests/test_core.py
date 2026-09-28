@@ -263,6 +263,8 @@ class ServerFlowTests(TempVault):
         png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         code, res = self.call("/api/drafts", {"images": [{"name": "a.png", "data": png}]})
         self.assertEqual(code, 200)
+        self.assertEqual(res["drafts"][0]["status"], "staged")          # 上传后先准备，不直接执行
+        self.call("/api/draft/start", {"id": res["drafts"][0]["id"]})
         draft = self.wait_ready(res["drafts"][0]["id"])
         self.assertEqual(draft["status"], "ready")
         self.assertEqual([step["id"] for step in draft["activity"]["steps"]],

@@ -5,12 +5,13 @@
 | 要做的事 | 先读 |
 | --- | --- |
 | 改数据结构、加提交类型、改去重、改入库 | `data.md` |
-| 改复习节奏、评分档、排复习的挑题规则、估时 | `algorithm.md` |
+| 改复习节奏、评分档、记忆类型（记忆型 / 理解型）、排复习的推荐规则与理由、估时 | `algorithm.md` |
 | 改 AI 提示词、草稿结构、默写模板格式、对话修订 | `ai.md` |
+| 改复习助手（评分页右侧的 AI：提问、打分、写反馈） | `ai.md`「复习助手」、`api.md`「复习助手」 |
 | 改 Agent harness、工具、子代理委派、插话 / 停止 | `ai.md`「Agent harness」 |
 | 改复习记录的增删改查、删除后恢复 | `data.md`「复习记录」 |
 | 改脱敏源码导出 | `api.md`「脱敏源码包」 |
-| 加 / 改 HTTP 接口、题库查询、打印卷面、命令行 | `api.md` |
+| 加 / 改 HTTP 接口、题库查询（分面、分组、分页）、打印卷面、命令行 | `api.md` |
 | 改界面：录入页、概览、题库、复习、设置、样式 token | `frontend.md` |
 | 看版本变化 | `changelog.md` |
 
@@ -39,4 +40,4 @@ python3 tests/check_ui.py                  # 前端纪律 R1–R9
 python3 tests/e2e_main.py --shots /tmp/s   # 真浏览器主路径（playwright），可另存截图
 ```
 
-`tests/test_agent.py` 覆盖 harness（工具出错回给模型、截断不执行、旧图省略、插话、停止）、草稿工具、复习记录增删改查、脱敏导出，以及 Agent 模式的 HTTP 全流程。`tests/fake_ai.py` 是 OpenAI 兼容的假模型（带 `tools` 的请求扮演确定性的工具调用 Agent）：识图请求轮流返回三套草稿（现代文《老街的灯》+ 默写、古诗《山居秋暝》+ 标点不同的重复默写、文言文《咏雪》），修订请求能听懂「第 N 题 + 答案 / 题型 / 留白」。环境变量 `FAKE_AI_DELAY=秒` 可以模拟慢模型；`CLMS_TODAY=YYYY-MM-DD` 可以固定「今天」。
+`tests/test_review.py` 覆盖两种记忆类型、推荐（自选 / 移除 / 未完成复习 / 薄弱题型 / 最近做过）、题库分面与分组、复习历史筛选、复习助手（上下文、建议解析、流式、照片）。`tests/test_agent.py` 覆盖 harness（工具出错回给模型、截断不执行、旧图省略、插话、停止）、草稿工具、复习记录增删改查、脱敏导出，以及 Agent 模式的 HTTP 全流程。`tests/fake_ai.py` 是 OpenAI 兼容的假模型（带 `tools` 的请求扮演确定性的工具调用 Agent）：识图请求轮流返回三套草稿（现代文《老街的灯》+ 默写、古诗《山居秋暝》+ 标点不同的重复默写、文言文《咏雪》），修订请求能听懂「第 N 题 + 答案 / 题型 / 留白」。环境变量 `FAKE_AI_DELAY=秒` 可以模拟慢模型；`FAKE_AI_STREAM_DELAY=秒` 控制流式每片的间隔（e2e 默认 0.02，观察流式那一步临时放慢到 0.12）；`FAKE_AI_NO_STREAM_OPTIONS=1` 让假模型拒绝 `stream_options`（测试用量回退到估算）；`CLMS_TODAY=YYYY-MM-DD` 可以固定「今天」。

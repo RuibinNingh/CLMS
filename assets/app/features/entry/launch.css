@@ -1,0 +1,73 @@
+/* 开始界面（launch.js）：居中的大输入框、页面条（排序 / 旋转 / 删页 / 说明）、快捷问题。输入框与对话栏输入框同名
+   view-transition-name（composer，见 entry.css），开始后平滑落到底部。 */
+.launch { flex: 1; display: grid; place-items: center; min-height: 0; overflow-y: auto; padding: var(--sp-8) var(--sp-6); }
+.launch__inner { display: grid; gap: var(--sp-2); width: min(100%, var(--launch-width)); animation: launch-in var(--dur-4) var(--ease-out) both; }
+.launch__hist { justify-self: start; }
+.launch__title { text-align: center; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); letter-spacing: -0.01em; }
+.launch__sub { justify-self: center; max-width: 34em; text-align: center; color: var(--fg-3); font-size: var(--text-sm); }
+.launch__box { margin-top: var(--sp-4); box-shadow: var(--elev-2); }
+.launch.is-over .launch__box { border-color: var(--accent); box-shadow: var(--ring); }
+.launch__input {
+  display: block; width: 100%; min-height: 84px; max-height: 40vh; padding: var(--sp-4) var(--sp-4) var(--sp-1);
+  border: 0; outline: none; resize: none; background: transparent; font-size: var(--text-md); line-height: var(--leading-read);
+}
+.launch__input::placeholder { color: var(--fg-3); }
+.launch__box .composer__row { padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+.launch__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.launch__chips .chip { cursor: pointer; transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out); }
+.launch__chips .chip:hover { background: var(--accent-soft); color: var(--accent); }
+.launch__warn { justify-self: center; margin-top: var(--sp-3); }
+
+.launch__pages { display: flex; gap: var(--sp-3); overflow-x: auto; padding: var(--sp-3) var(--sp-3) var(--sp-1); border-bottom: 1px solid var(--border-1); }
+.page { flex: none; display: grid; align-content: start; gap: var(--sp-1); width: 112px; cursor: grab; animation: page-in var(--dur-3) var(--ease-out) both; }
+.launch__pages.is-dragging .page:hover .page__img { border-color: var(--accent); box-shadow: var(--ring-line); }
+.page__img {
+  position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden;
+  border: 1px solid var(--border-1); border-radius: var(--r-sm); background: var(--surface-2); transition: border-color var(--dur-1);
+}
+.page__img img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform var(--dur-3) var(--ease-out); }
+.page__img[data-rotate="90"] img { transform: rotate(90deg) scale(.75); }
+.page__img[data-rotate="180"] img { transform: rotate(180deg); }
+.page__img[data-rotate="270"] img { transform: rotate(270deg) scale(.75); }
+.page__no {
+  position: absolute; top: var(--sp-1); left: var(--sp-1); display: grid; place-items: center; min-width: 18px; height: 18px;
+  padding: 0 var(--sp-1); border-radius: var(--r-pill); background: var(--fg-1); color: var(--surface-1); font-size: var(--text-2xs); font-weight: var(--weight-semibold);
+}
+.page__tools {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; padding: var(--sp-1);
+  background: linear-gradient(transparent, var(--scrim)); opacity: 0; transform: translateY(4px);
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out);
+}
+.page:hover .page__tools, .page:focus-within .page__tools { opacity: 1; transform: none; }
+.page__btn {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-pill);
+  background: var(--surface-1); color: var(--fg-1); box-shadow: var(--elev-1); cursor: pointer;
+}
+.page__btn svg { width: 13px; height: 13px; }
+.page__btn:first-child svg { transform: rotate(180deg); }
+.page__btn:disabled { opacity: .35; cursor: default; }
+.page__note {
+  width: 100%; padding: var(--sp-0_5) 0; border: 0; border-bottom: 1px dashed var(--border-2); outline: none; background: transparent;
+  color: var(--fg-2); font-size: var(--text-2xs); text-align: center;
+}
+.page__note:focus { border-bottom-color: var(--accent); }
+.page--add { cursor: default; }
+.page__addbtn {
+  display: grid; place-items: center; align-self: start; width: 100%; aspect-ratio: 3 / 4; border: 1px dashed var(--border-2); border-radius: var(--r-sm);
+  color: var(--fg-3); cursor: pointer; transition: color var(--dur-1), border-color var(--dur-1);
+}
+.page__addbtn:hover { color: var(--accent); border-color: var(--accent); }
+.page__addbtn svg { width: 20px; height: 20px; }
+.shot { position: relative; overflow: hidden; }
+.shot__no { display: block; padding: var(--sp-1) var(--sp-2); font-size: var(--text-2xs); color: var(--fg-3); text-align: left; }
+.shot[data-rotate="90"] img { transform: rotate(90deg) scale(.75); }
+.shot[data-rotate="180"] img { transform: rotate(180deg); }
+.shot[data-rotate="270"] img { transform: rotate(270deg) scale(.75); }
+@keyframes launch-in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes page-in { from { opacity: 0; transform: scale(.94); } }
+@media (hover: none) { .page__tools { opacity: 1; transform: none; } }
+@media (max-width:760px){
+  .launch { place-items: start center; padding: var(--sp-4) var(--sp-3); }
+  .launch__title { font-size: var(--text-xl); }
+  .page { width: 92px; }
+}

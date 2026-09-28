@@ -85,3 +85,33 @@ dialog.dlg::backdrop { background: var(--scrim); }
 .dlg__body h3 { font-size: var(--text-lg); }
 .dlg__body p { color: var(--fg-2); font-size: var(--text-sm); }
 .dlg__foot { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: 0 var(--sp-5) var(--sp-5); }
+
+/* 进行中文字的流光（思考中、执行中、等待） */
+.shimmer {
+  background: linear-gradient(90deg, var(--fg-3) 0%, var(--fg-3) 35%, var(--fg-1) 50%, var(--fg-3) 65%, var(--fg-3) 100%);
+  background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shimmer var(--dur-flash) linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* 模型回复的 Markdown（core/markdown.js） */
+.md { overflow-wrap: anywhere; }
+.md > * + * { margin-top: var(--sp-2); }
+.md ul, .md ol { display: grid; gap: var(--sp-1); padding-left: var(--sp-5); }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li::marker { color: var(--fg-3); }
+.md strong { font-weight: var(--weight-semibold); color: var(--fg-1); }
+.md code { padding: 0 var(--sp-1); border-radius: var(--r-xs); background: var(--surface-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+.md .md__code { overflow-x: auto; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm); background: var(--surface-2); font-family: var(--font-mono); font-size: var(--text-xs); }
+.md .md__code code { padding: 0; background: none; }
+.md .md__h { font-weight: var(--weight-semibold); }
+.md blockquote { margin: 0; padding-left: var(--sp-3); border-left: 2px solid var(--border-2); color: var(--fg-2); }
+.md .md__table { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: var(--text-xs); }
+.md th, .md td { padding: var(--sp-1) var(--sp-2); border: 1px solid var(--border-1); text-align: left; vertical-align: top; }
+.md th { background: var(--surface-2); font-weight: var(--weight-medium); }
+.md.is-live > :last-child::after {
+  content: ''; display: inline-block; width: 2px; height: 1em; margin-left: var(--sp-0_5); background: var(--accent);
+  vertical-align: text-bottom; animation: pulse var(--dur-flash) var(--ease-in-out) infinite;
+}
+.seg--sm button { min-height: var(--ctl-sm); padding: 0 var(--sp-2); font-size: var(--text-xs); }

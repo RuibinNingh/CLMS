@@ -3,7 +3,15 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; min-height: 100vh; background: var(--surface-0); color: var(--fg-1);
   font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-ui);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-kerning: normal;
 }
+/* 滚动条：细、跟随主题，不要系统默认的粗条和箭头 */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+*:hover { scrollbar-color: var(--scroll-thumb-hover) transparent; }
+/* 大界面切换（录入页：开始 ↔ 对话）的 View Transition：整体交叉淡入，输入框单独平滑移动 */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-3); animation-timing-function: var(--ease-out); }
+::view-transition-group(composer) { animation-duration: var(--dur-4); animation-timing-function: var(--ease-out); }
+::view-transition-old(composer), ::view-transition-new(composer) { height: 100%; animation-duration: var(--dur-3); }
 h1, h2, h3, h4, p, ol, ul, figure { margin: 0; }
 ol, ul { padding: 0; list-style: none; }
 button, input, select, textarea { font: inherit; color: inherit; }

@@ -9,7 +9,7 @@
   ledger.db          SQLite（WAL）：commits + counters
   config.json        设置（AI、复习日、时长、tuning、qtypes）
   drafts/D-*.json    录入草稿（不进 Ledger）
-  images/<sha24>.<ext>  上传的原图，按内容哈希命名，重复上传自动合并
+  images/<sha24>.<ext>  上传的原图（录入、复习助手里的作答照片），按内容哈希命名，重复上传自动合并
 ```
 
 ## Ledger（`clms/ledger.py`）
@@ -74,7 +74,7 @@
 }
 ```
 
-- 状态：识图 `queued → extracting → ready`，对话修订 `queued → thinking → ready`；失败为 `error`（`last_job` 可重试）；终态 `committed` / `discarded`。服务启动时 `recover()` 把卡在处理中的草稿标成可重试的 `error`。
+- 状态：上传后先 `staged`（准备：`pages = [{image, rotate, note}]` 排页序、旋转、每页说明，`images` 与之同序），「开始」后识图 `queued → extracting → ready`，对话修订 `queued → thinking → ready`；丢弃是 `discarded`（回收站，`discarded_from` 记原状态，可恢复，可彻底删除文件）；`name` 是用户起的名字；失败为 `error`（`last_job` 可重试）；终态 `committed` / `discarded`。服务启动时 `recover()` 把卡在处理中的草稿标成可重试的 `error`。
 - `activity` 保存最近一次 AI 任务实际经过的阶段、状态和时间；阶段为排队、图片 / 上下文准备、模型请求、解析、保存。它属于草稿暂存层，不进入 Ledger。
 - `groups` 的结构见 `ai.md`。每次 AI 修订、手工编辑、恢复都追加一个 revision，最多保留 40 版。
 - 消息 `role`：`user`（文字 / 原图）、`ai`（`text, notes?, changes[], revision, base_revision?, error?, kind?`）、`edit`（手改或恢复，`changes[], revision, base_revision, merge?`，连续手改合并成一条）、`system`（入库结果）。`changes` 来自 `draft_schema.diff()`：`[{gid, iid, field, label}]`，field 为 `*` 表示新增、`-` 表示删除。
@@ -92,8 +92,18 @@
 | 删 | `review.void` | 只能删有效记录 |
 | 恢复 | （所在复习里这题已有别的有效评分时先 void 它）+ `review.grade`（`restored_from`） | 只能恢复已作废、且还没被恢复过的；所在复习已删除时拒绝 |
 
-评分档按板块校验：阅读 0–3，默写 0 / 1 / 3。`sessions.grade_many` 在一个事务里写多题（AI 批改用）。
+评分档按板块校验：阅读 0–3，默写 0 / 1 / 3。`sessions.grade_many` 在一个事务里写多题（Agent 批改用）。
+
+查询（`list_records`）可按题、复习、板块、评分（low / mid / high 或分值）、起始日期、是否写了反馈筛选，`offset / limit` 分页；每条记录另附 `qtype`、`material_title`，供题库「复习记录」分页显示。复习助手采用的评分和反馈也只是普通的 `review.grade` / 「改」，没有新的提交类型。
+
+## 草稿里的对话块（v0.3）
+
+`messages` 是一串带 `id` 的块：`user`（`text, images, queued?, qid?, dropped?`）、`thinking`（`text, status: streaming/done`）、`assistant`（`text, status`）、`tool`（`call_id, name, label, args_text, args, result, summary, status: preparing/pending/running/done/error/stopped, tasks?, started_at, ended_at`）、`run`（`status: done/error/stopped, turns, tool_calls, seconds, changes?, revision?, base_revision?, text?`）、`edit`、`system`、`ai`（旧流程）。Agent 产生的块带 `run`；子代理的块带 `parent`（delegate 工具块的 id）与 `task`。进行中的逐字内容在 `live.py` 内存里，读草稿时盖上；服务重启后进行中的块由 `recover()` 收尾为出错。`agent.running = {run, kind, started_at}` 是正在执行的 run（前端计时用）。
 
 ## 草稿里的 Agent 字段
 
-`kind`（extract / manual / chat / review）、`session_id`（review）、`agent: {messages, run, inbox, token}`：`messages` 是模型上下文（OpenAI 形状，图片只存引用），`inbox` 是插话队列，`token` 是当前 run 的令牌（停止或结束时清空，旧 run 的写入按令牌作废）。对话消息里 Agent 回复是一段 `{role: "ai", run, kind, status(running/done/error/stopped), text, steps:[{type: "say", text} | {type: "tool", id, name, label, status, summary, tasks?}], changes, revision, base_revision, turns, tool_calls}`；插话的用户消息带 `queued` / `qid`，停止时没送达的标 `dropped`。一次 run 的所有改动只占一版 revision。
+`kind`（extract / manual / chat / review）、`session_id`（review）、`agent: {messages, run, inbox, token, running, stats}`：
+
+- `messages` 是模型上下文（OpenAI 形状，图片只存引用，思考不存进去）；`inbox` 是插话队列；`token` 是当前 run 的令牌（停止或结束时清空，旧 run 的写入按令牌作废）；`running = {run, kind, started_at}`。
+- `stats = {turns, sub_turns, tool_calls, input_total, output_total, context, tps, ttft, estimated}`：累计用量，读草稿时再补上 `window`（设置 `ai_context_window`）。见 `ai.md`「模型接口」。
+- 对话里给用户看的内容是 `messages` 顶层那串块（见上一节「草稿里的对话块」），不是这里的模型上下文。插话的用户块带 `queued` / `qid`，停止时没送达的标 `dropped`。一次 run 的所有改动只占一版 revision。

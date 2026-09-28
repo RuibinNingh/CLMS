@@ -1,22 +1,35 @@
 /**
- * 录入页控制器：状态、轮询、自动保存与全部动作。渲染在 layout.js，纯数据操作在 edit.js。
- * - 轮询：有草稿在排队 / 识别 / 修改时每 1.2 秒刷新队列与当前草稿，否则每 8 秒。
+ * 录入页控制器：状态、录入记录、实时流、自动保存与动作。渲染在 layout.js，管理类动作在 manage.js，纯数据操作在 edit.js。
+ * - 流程：居中输入框（hero.js：新对话，或上传后确认页序 / 方向 / 说明）→ 开始 → Agent 执行（对话里实时显示思考、
+ *   说的话、工具调用）→ 校对 → 入库 →「录下一份」回到居中输入框。两种界面之间用 View Transition 过渡（输入框平滑移动）。
+ * - 实时：打开一份草稿就订阅 /api/draft/events（SSE）。block 事件整块替换，delta 事件逐字追加（requestAnimationFrame 合批重画），
+ *   status 事件稍后重新拉草稿（右侧草稿随工具调用实时更新）。live_seq 之前的事件忽略，避免和刚拉到的快照重复。
+ * - 录入记录每 4 秒（有执行中的）或 15 秒刷新；执行中每秒重画一次计时。
  * - 手工编辑：先改本地工作副本，停顿 0.7 秒后整份提交（带版本号，AI 同时改过则拒绝并提示刷新）。
- * - AI 改完：新消息里的 changes 会在画布上闪一次，并可在对话里点「回到修改前」。
- * - Agent 模式：执行中也能发话（插话）、可以停止；输入框可附图（在输入框里粘贴截图也算附图）；
- *   「新对话」开一段没有草稿的对话；复习页「交给 AI 批改」经 store.entryIntent 打开对应会话。
+ * - 时间线跟随：用户停在底部时新内容自动滚到底；往上翻看时不打扰。
+ * - 输入框旁的圆环（gauge.js）：服务端 stats 事件给上下文与累计用量，逐字事件在前端算实时速度。
+ * - 录入记录宽屏可收起，状态存在 localStorage（clms-hist）。
  */
 import { morph } from '../../core/dom.js';
 import { defineActions } from '../../core/events.js';
 import { get, post } from '../../core/api.js';
+import { subscribe } from '../../core/sse.js';
+import { readImages } from '../../core/files.js';
 import { toast, confirmDialog } from '../../ui/feedback.js';
 import { loadTaxonomy } from '../../domain/genres.js';
-import { readFiles } from './queue.js';
 import { BUSY, view } from './layout.js';
+import { manageActions } from './manage.js';
+import { createRate } from './gauge.js';
+import { bindListeners } from './listeners.js';
 import { addGroup, addItem, clone, insertBlank, parsePath, removeEntry, setField, stepLines } from './edit.js';
 
 let lastActive = null;
+const remembered = { view: 'all', q: '' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const wide = () => window.matchMedia?.('(min-width: 1501px)').matches;
+const stored = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
+const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 export const page = { id: 'entry', title: '录入', icon: 'entry', workbench: true, mount };
 
@@ -24,24 +37,43 @@ function mount(root, { bus, store }) {
   const intent = store.get().entryIntent;
   if (intent) { store.set({ entryIntent: null }); lastActive = intent.open; }
   const s = {
-    drafts: [], aiReady: true, activeId: lastActive, draft: null, working: null, pane: 'draft', tab: 'draft',
-    composer: '', withImage: true, pending: null, dragging: false, flash: null, expanded: new Set(),
-    opened: new Set(), zoom: false, taxonomy: null, saving: false, dirty: false, seen: 0, attach: [], runLog: new Map(),
+    drafts: [], counts: {}, total: 0, view: remembered.view, q: remembered.q, limit: 60, today: localDay(),
+    aiReady: true, activeId: lastActive, draft: null, working: null, pane: 'draft', tab: 'chat', histOpen: false,
+    composer: '', withImage: true, attach: [], dragging: false, dragPage: null, flash: null, expanded: new Set(),
+    opened: new Set(), zoom: false, taxonomy: null, saving: false, dirty: false, seen: 0, open: new Map(),
+    renaming: null, starting: false, liveSeq: 0, heroText: '', split: false, known: new Set(), liveTps: 0,
+    histCollapsed: stored('clms-hist') === 'collapsed',
   };
-  let alive = true;
-  let pollTimer = 0; let saveTimer = 0; let flashTimer = 0;
-  let scrollChat = false; let focusAfter = null; let scrollAnchor = null;
+  const rate = createRate();
+  let alive = true; let pollTimer = 0; let saveTimer = 0; let flashTimer = 0; let refetchTimer = 0; let frame = 0;
+  let closeStream = null; let streamId = null; let loadSeq = 0; let openSeq = 0;
+  let focusAfter = null; let scrollAnchor = null; let forceBottom = false;
 
   function render() {
     if (!alive) return;
+    cancelAnimationFrame(frame); frame = 0;
+    s.liveTps = s.draft && BUSY.includes(s.draft.status) ? rate.tps() : 0;
+    s.wide = wide();
+    const log = root.querySelector('#chat-log');
+    const stick = forceBottom || !log || log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     morph(root, view(s));
     root.querySelectorAll('textarea[data-autosize]').forEach(autosize);
-    if (scrollChat) { const log = root.querySelector('#chat-log'); if (log) log.scrollTop = log.scrollHeight; scrollChat = false; }
+    const after = root.querySelector('#chat-log');
+    if (after && stick) after.scrollTop = after.scrollHeight;
+    forceBottom = false;
     if (scrollAnchor) {
       root.querySelector(`[data-anchor="${scrollAnchor}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       scrollAnchor = null;
     }
     if (focusAfter) { const el = root.querySelector(focusAfter); focusAfter = null; if (el) { el.focus(); el.setSelectionRange?.(el.value.length, el.value.length); } }
+  }
+  const soon = () => { if (!frame) frame = requestAnimationFrame(render); };
+
+  /** 界面大变化（开始 ↔ 对话）走 View Transition：输入框从中间落到底部（或反过来），其余交叉淡入淡出。 */
+  async function transition(update) {
+    update();                                          // 状态立刻变（进行中的刷新据此作废），只把「画」交给过渡
+    if (!document.startViewTransition || reduceMotion() || document.hidden) { render(); return; }
+    await document.startViewTransition(() => render()).finished.catch(() => {});
   }
 
   function autosize(ta) {
@@ -59,49 +91,82 @@ function mount(root, { bus, store }) {
 
   function applyDraft(d) {
     const fresh = !s.draft || s.draft.id !== d.id;
-    const wasEmpty = s.draft && !s.draft.revision;
     const msgs = d.messages || [];
     if (!fresh && msgs.length > s.seen) {
-      flashChanges(msgs.slice(s.seen).flatMap(m => (m.role === 'ai' || (m.role === 'edit' && !m.merge) ? m.changes || [] : [])));
-      scrollChat = true;
+      flashChanges(msgs.slice(s.seen).flatMap(m => (['run', 'ai'].includes(m.role) || (m.role === 'edit' && !m.merge) ? m.changes || [] : [])));
     }
-    if (fresh) { scrollChat = true; s.expanded = new Set(); s.opened = new Set(); s.pane = d.revision ? 'draft' : 'image'; }
-    if (wasEmpty && d.revision) s.pane = 'draft';
+    if (fresh) {
+      forceBottom = true; s.expanded = new Set(); s.opened = new Set(); s.open = new Map(); s.pane = d.revision ? 'draft' : 'image';
+      s.known = new Set(msgs.map(m => m.id)); s.split = false;
+      if (d.status === 'staged') s.heroText = d.hint || '';
+    }
+    if (s.draft && !s.draft.revision && d.revision) s.pane = 'draft';
     s.seen = msgs.length;
     s.draft = d;
+    s.liveSeq = Math.max(fresh ? 0 : s.liveSeq, d.live_seq || 0);
     if (fresh || (!s.dirty && !s.saving)) s.working = clone(d.groups);
   }
 
-  async function refreshList() {
-    const res = await get('/api/drafts');
-    if (!res.ok) return;
-    s.drafts = res.data.drafts;
-    s.aiReady = res.data.ai_ready;
-    if (!s.activeId || !s.drafts.some(d => d.id === s.activeId)) {
-      const next = s.drafts.find(d => d.status !== 'committed');
-      s.activeId = next ? next.id : null;
-      if (!next) s.draft = null;
+  // ── 实时流 ───────────────────────────────────────
+  function onEvent(ev) {
+    if (!s.draft || (ev.seq && ev.seq <= s.liveSeq)) return;
+    if (ev.seq) s.liveSeq = ev.seq;
+    const msgs = s.draft.messages;
+    if (ev.type === 'delta') {
+      const block = msgs.find(m => m.id === ev.id);
+      rate.add(ev.text);
+      if (block) { block[ev.field] = (block[ev.field] || '') + ev.text; soon(); }
+    } else if (ev.type === 'stats') {
+      s.draft.stats = ev.stats; soon();
+    } else if (ev.type === 'block') {
+      const i = msgs.findIndex(m => m.id === ev.block.id);
+      if (i >= 0) msgs[i] = ev.block; else msgs.push(ev.block);
+      soon();
+    } else if (ev.type === 'status' || ev.type === 'reload') {
+      if (ev.status) s.draft.status = ev.status;
+      clearTimeout(refetchTimer);
+      refetchTimer = setTimeout(() => {                 // 草稿和左侧录入记录一起刷新：状态点、标题、题数随执行结束立刻变
+        if (!s.saving && !s.dirty) Promise.all([loadActive(), refreshList()]).then(render);
+      }, ev.type === 'reload' ? 0 : 250);
     }
   }
 
+  function connect() {
+    if (!s.draft || streamId === s.draft.id) return;
+    closeStream?.();
+    streamId = s.draft.id;
+    closeStream = subscribe(`/api/draft/events?id=${encodeURIComponent(streamId)}&since=${s.liveSeq}`, onEvent);
+  }
+
+  async function refreshList() {
+    const q = new URLSearchParams({ view: s.view, q: s.q, limit: s.limit });
+    remembered.view = s.view; remembered.q = s.q;
+    const res = await get(`/api/drafts?${q}`);
+    if (!res.ok) return;
+    Object.assign(s, { drafts: res.data.drafts, counts: res.data.counts, total: res.data.total, aiReady: res.data.ai_ready, today: localDay() });
+  }
+
   async function loadActive() {
-    if (!s.activeId) { s.draft = null; return; }
-    const res = await get(`/api/draft?id=${encodeURIComponent(s.activeId)}`);
-    if (res.ok) applyDraft(res.data);
-    else if (res.status === 404) { s.activeId = null; s.draft = null; }
+    const id = s.activeId;
+    if (!id) { s.draft = null; return; }
+    const mine = ++loadSeq;
+    const opening = openSeq;
+    const res = await get(`/api/draft?id=${encodeURIComponent(id)}`);
+    // 请求途中切走了、后发的刷新先回来了、或者用户又打开了别的：这份旧回复作废，免得界面倒退
+    if (s.activeId !== id || mine !== loadSeq || opening !== openSeq) return;
+    if (res.ok) { applyDraft(res.data); connect(); } else if (res.status === 404) { s.activeId = null; s.draft = null; }
   }
 
   async function poll() {
     clearTimeout(pollTimer);
     if (!alive) return;
-    const busy = s.drafts.some(d => BUSY.includes(d.status)) || (s.draft && BUSY.includes(s.draft.status));
     await refreshList();
-    if (!s.saving && !s.dirty) await loadActive();
+    if (!s.saving && !s.dirty && s.draft && BUSY.includes(s.draft.status)) await loadActive();
     lastActive = s.activeId;
     render();
-    const again = s.drafts.some(d => BUSY.includes(d.status)) || (s.draft && BUSY.includes(s.draft.status));
-    pollTimer = setTimeout(poll, busy || again ? 1200 : 8000);
-    bus.emit('badge', { id: 'entry', text: s.drafts.filter(d => d.status === 'ready').length || '' });
+    const busy = s.drafts.some(d => BUSY.includes(d.status)) || (s.draft && BUSY.includes(s.draft.status));
+    pollTimer = setTimeout(poll, busy ? 4000 : 15000);
+    bus.emit('badge', { id: 'entry', text: s.counts.ready || '' });
   }
 
   // ── 保存 ──────────────────────────────────────────
@@ -142,30 +207,57 @@ function mount(root, { bus, store }) {
     if (rerender) render();
   }
 
-  // ── 上传 ──────────────────────────────────────────
-  async function upload(images, combine) {
-    s.pending = null;
-    if (!images.length) { toast('没有可用的图片', { tone: 'bad' }); render(); return; }
-    toast(`上传 ${images.length} 张图片…`);
-    const hint = s.hint || '';
-    s.hint = '';
-    const res = await post('/api/drafts', { images, combine, hint }, { timeout: 120000 });
-    if (!res.ok) { toast(res.error.message, { tone: 'bad', ms: 6000 }); render(); return; }
-    s.activeId = res.data.drafts[0].id;
-    s.draft = null;
-    await poll();
+  // ── 上传 / 打开 ───────────────────────────────────
+  async function open(id, { fromHero = false } = {}) {
+    await flush();
+    const mine = ++openSeq;                              // 打开以最后一次为准；后台刷新不会打断它
+    const res = await get(`/api/draft?id=${encodeURIComponent(id)}`);
+    if (mine !== openSeq) return;
+    if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
+    const change = Boolean(s.draft) !== true || s.draft.status === 'staged' || res.data.status === 'staged' || fromHero;
+    const apply = () => {
+      closeStream?.(); closeStream = null; streamId = null;
+      s.activeId = id; lastActive = id; s.draft = null; s.tab = 'chat'; s.histOpen = false; s.renaming = null;
+      applyDraft(res.data);
+      if (fromHero) s.known = new Set();              // 从开始界面过来：第一条消息也要入场
+      connect();
+    };
+    if (change) await transition(apply); else { apply(); render(); }
+    await refreshList();
+    render();
+  }
+
+  /** 回到居中输入框（新录入 / 录下一份）。 */
+  async function fresh() {
+    await flush();
+    await transition(() => {
+      closeStream?.(); closeStream = null; streamId = null;
+      s.activeId = null; lastActive = null; s.draft = null; s.heroText = ''; s.attach = []; s.histOpen = false; s.split = false;
+    });
+    root.querySelector('#composer')?.focus();
+  }
+
+  async function heroSend() {
+    const text = s.heroText.trim();
+    if (!text || s.starting) return;
+    s.starting = true; render();
+    const made = await post('/api/drafts', { chat: true });
+    const sent = made.ok ? await post('/api/draft/message', { id: made.data.drafts[0].id, text }, { timeout: 120000 }) : made;
+    s.starting = false;
+    if (!sent.ok) { toast(sent.error.message, { tone: 'bad', ms: 6000 }); render(); return; }
+    s.heroText = '';
+    await open(made.data.drafts[0].id, { fromHero: true });
+    poll();
   }
 
   async function takeFiles(files) {
-    const images = await readFiles(files || []);
-    if (images.length > 1) { s.pending = images; render(); } else await upload(images, false);
-  }
-
-  async function open(id) {
-    await flush();
-    s.activeId = id; lastActive = id; s.draft = null; s.tab = 'draft';
-    await loadActive();
-    render();
+    const images = await readImages(files || []);
+    if (!images.length) { toast('没有可用的图片', { tone: 'bad' }); return; }
+    if (s.draft?.status === 'staged') { actions.pageAdd({ el: { files: [], value: '' } }, images); return; }
+    toast(`上传 ${images.length} 张图片…`);
+    const res = await post('/api/drafts', { images, hint: s.draft ? '' : s.heroText.trim() }, { timeout: 120000 });
+    if (!res.ok) { toast(res.error.message, { tone: 'bad', ms: 6000 }); return; }
+    await open(res.data.drafts[0].id);
   }
 
   async function call(path, body, { reload = true, timeout } = {}) {
@@ -175,20 +267,40 @@ function mount(root, { bus, store }) {
     return res.data;
   }
 
-  const undefine = defineActions('entry', {
+  const managed = manageActions({ s, root, render, refreshList, open, fresh, post, toast, confirmDialog, readImages, applyDraft, poll });
+  const actions = {
+    ...managed,
+    pageAdd: (ctx, preset) => (preset ? post('/api/draft/pages', { id: s.draft.id, add: preset }, { timeout: 120000 })
+      .then(res => { if (res.ok) { applyDraft(res.data); render(); } else toast(res.error.message, { tone: 'bad' }); }) : managed.pageAdd(ctx)),
     open: ({ arg }) => open(arg),
     files: ({ el }) => { const files = [...el.files]; el.value = ''; takeFiles(files); },
-    hint: ({ el }) => { s.hint = el.value; },
-    upload: ({ arg }) => (arg === 'cancel' ? (s.pending = null, render()) : upload(s.pending || [], arg === 'combine')),
     async manual({ el }) {
       const genre = el.value; el.value = '';
       if (!genre) return;
       const res = await post('/api/drafts', { manual: genre });
       if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
       await open(res.data.drafts[0].id);
-      poll();
+    },
+    fresh: () => fresh(),
+    heroText({ el }) {
+      s.heroText = el.value;
+      autosize(el);
+      const btn = root.querySelector('.launch .composer__send');
+      if (btn && s.draft?.status !== 'staged') btn.disabled = !s.heroText.trim();
+    },
+    heroSuggest: ({ arg }) => { s.heroText = arg; focusAfter = '#composer'; render(); },
+    split: ({ arg }) => { s.split = arg === 'each'; render(); },
+    collapse() {
+      s.histCollapsed = !s.histCollapsed;
+      try { localStorage.setItem('clms-hist', s.histCollapsed ? 'collapsed' : 'open'); } catch (_) { /* 隐私模式 */ }
+      render();
+    },
+    hist() {
+      if (wide()) { actions.collapse(); return; }
+      s.histOpen = !s.histOpen; render();
     },
     field({ el, event }) {
+      if (el.dataset.oneline !== undefined && /\n/.test(el.value)) el.value = el.value.replace(/\s*\n\s*/g, ' ');   // 粘贴进来的换行
       const { field } = parsePath(el.dataset.path);
       const structural = event.type === 'change' || field === 'template' || field.startsWith('blank:');
       if (el.tagName === 'TEXTAREA') autosize(el);
@@ -196,10 +308,7 @@ function mount(root, { bus, store }) {
     },
     lines: ({ el, arg }) => edit(stepLines(s.working, el.dataset.path, Number(arg)), { now: true }),
     add: ({ arg }) => edit(addItem(s.working, arg), { now: true }),
-    addGroup({ el }) {
-      const genre = el.value; el.value = '';
-      if (genre) edit(addGroup(s.working, genre), { now: true });
-    },
+    addGroup({ el }) { const genre = el.value; el.value = ''; if (genre) edit(addGroup(s.working, genre), { now: true }); },
     remove: ({ arg }) => edit(removeEntry(s.working, arg), { now: true }),
     insertBlank: ({ arg }) => { focusAfter = `textarea[data-path="${arg}|template"]`; edit(insertBlank(s.working, arg), { now: true }); },
     reveal: ({ arg }) => { s.opened.add(arg); focusAfter = `textarea[data-path="${arg}"]`; render(); },
@@ -210,25 +319,12 @@ function mount(root, { bus, store }) {
       const btn = root.querySelector('[data-action="entry.send"]');
       if (btn) btn.disabled = !s.composer.trim() && !s.attach.length;
     },
-    async attach({ el }) { const files = [...el.files]; el.value = ''; s.attach.push(...await readFiles(files)); render(); },
+    async attach({ el }) { const files = [...el.files]; el.value = ''; s.attach.push(...await readImages(files)); render(); },
     unattach: ({ arg }) => { s.attach.splice(Number(arg), 1); render(); },
-    async stop() { if (await call('/api/draft/abort', { id: s.draft.id })) { toast('已停止'); render(); poll(); } },
-    runlog({ arg }) {
-      const i = Number(String(arg).split(':').pop());
-      const running = s.draft?.messages?.[i]?.status === 'running';
-      s.runLog.set(arg, !(s.runLog.has(arg) ? s.runLog.get(arg) : running));
-      render();
-    },
-    async newChat() {
-      const res = await post('/api/drafts', { chat: true });
-      if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
-      await open(res.data.drafts[0].id);
-      focusAfter = '#composer'; render();
-      poll();
-    },
     suggest: ({ arg }) => { s.composer = s.composer.trim() ? `${s.composer.trim()}\n${arg}` : arg; focusAfter = '#composer'; render(); },
     withImage: () => { s.withImage = !s.withImage; render(); },
     async send() {
+      if (!s.draft) { heroSend(); return; }
       const text = s.composer.trim();
       const images = s.attach;
       if ((!text && !images.length) || !s.draft) return;
@@ -236,12 +332,13 @@ function mount(root, { bus, store }) {
       s.composer = ''; s.attach = [];
       const box = root.querySelector('#composer');
       if (box) box.value = '';                 // morph 会保留聚焦输入框的值，发送后要手动清空
+      forceBottom = true;
       const data = await call('/api/draft/message', { id: s.draft.id, text, with_image: s.withImage, images }, { timeout: 120000 });
       if (!data) { s.composer = text; s.attach = images; }
-      scrollChat = true;
       render();
       poll();
     },
+    async stop() { if (await call('/api/draft/abort', { id: s.draft.id })) { toast('已停止'); render(); } },
     async restore({ arg }) {
       await flush();
       if (await call('/api/draft/restore', { id: s.draft.id, revision: Number(arg) })) {
@@ -271,65 +368,23 @@ function mount(root, { bus, store }) {
       await refreshList();
       render();
     },
-    async discard() {
-      const ok = await confirmDialog({ title: '丢弃这份草稿？', body: '原图会保留在数据目录里，草稿和对话记录不再显示。', ok: '丢弃', danger: true });
-      if (!ok) return;
-      if (await call('/api/draft/discard', { id: s.draft.id }, { reload: false })) {
-        s.activeId = null; s.draft = null;
-        await poll();
-      }
-    },
-    next() {
-      const next = s.drafts.find(d => d.status !== 'committed' && d.id !== s.draft?.id);
-      if (next) open(next.id); else { s.activeId = null; lastActive = null; s.draft = null; render(); }
-    },
-  });
+  };
+  const undefine = defineActions('entry', actions);
 
-  // ── 文档级监听：粘贴截图、拖放、Enter 发送 ──────────
-  const onPaste = async event => {
-    const files = [...(event.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
-    if (!files.length) return;
-    event.preventDefault();
-    if (event.target?.id === 'composer' && s.draft?.agent) { s.attach.push(...await readFiles(files)); render(); return; }
-    takeFiles(files);
-  };
-  const onDragOver = event => {
-    if (![...(event.dataTransfer?.types || [])].includes('Files')) return;
-    event.preventDefault();
-    if (!s.dragging) { s.dragging = true; render(); }
-  };
-  const onDragLeave = event => { if (event.target === root || !root.contains(event.relatedTarget)) { s.dragging = false; render(); } };
-  const onDrop = event => {
-    if (!event.dataTransfer?.files?.length) return;
-    event.preventDefault();
-    s.dragging = false;
-    takeFiles(event.dataTransfer.files);
-  };
-  const onKey = event => {
-    if (event.target.id === 'composer' && event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-      event.preventDefault();
-      root.querySelector('[data-action="entry.send"]')?.click();
-    }
-  };
-  document.addEventListener('paste', onPaste);
-  root.addEventListener('dragover', onDragOver);
-  root.addEventListener('dragleave', onDragLeave);
-  root.addEventListener('drop', onDrop);
-  root.addEventListener('keydown', onKey);
+  const unbind = bindListeners(root, { s, render, takeFiles, readImages, movePage: managed.movePage });
+  const ticker = setInterval(() => { if (s.draft && BUSY.includes(s.draft.status)) render(); }, 1000);
 
   render();
   loadTaxonomy().then(t => { s.taxonomy = t; render(); });
-  poll();
+  loadActive().then(poll);
 
   return () => {
     alive = false;
     if (s.dirty) saveNow();
-    clearTimeout(pollTimer); clearTimeout(flashTimer);
+    clearTimeout(pollTimer); clearTimeout(flashTimer); clearTimeout(refetchTimer); clearInterval(ticker);
+    cancelAnimationFrame(frame);
+    closeStream?.();
     undefine();
-    document.removeEventListener('paste', onPaste);
-    root.removeEventListener('dragover', onDragOver);
-    root.removeEventListener('dragleave', onDragLeave);
-    root.removeEventListener('drop', onDrop);
-    root.removeEventListener('keydown', onKey);
+    unbind();
   };
 }

@@ -38,17 +38,34 @@ export function startShell(pages) {
   pages.forEach(p => router.register(p));
 
   render(document.getElementById('nav'), each(pages, p => p.id, p => html`
-    <a href="#/${p.id}" data-page="${p.id}">${icon(p.icon)}<span>${p.title}</span><span class="nav__badge" data-badge="${p.id}"></span></a>`));
+    <a href="#/${p.id}" data-page="${p.id}" title="${p.title}">${icon(p.icon)}<span>${p.title}</span><span class="nav__badge" data-badge="${p.id}"></span></a>`));
 
   const themeButton = document.getElementById('theme-toggle');
-  const syncTheme = () => { themeButton.textContent = document.documentElement.dataset.theme === 'dark' ? '切换浅色' : '切换深色'; };
+  const syncTheme = () => {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    render(themeButton, html`${icon(dark ? 'sun' : 'moon')}<span>${dark ? '切换浅色' : '切换深色'}</span>`);
+  };
+  const navButton = document.getElementById('nav-toggle');
+  const syncNav = () => {
+    const mini = document.documentElement.dataset.nav === 'mini';
+    render(navButton, icon('panel'));
+    navButton.setAttribute('aria-label', mini ? '展开导航' : '收起导航');
+    navButton.title = mini ? '展开导航' : '收起导航';
+  };
   syncTheme();
+  syncNav();
   defineActions('app', {
     theme() {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next;
       try { localStorage.setItem('clms-theme', next); } catch (_) { /* 隐私模式 */ }
       syncTheme();
+    },
+    nav() {
+      const next = document.documentElement.dataset.nav === 'mini' ? 'full' : 'mini';
+      document.documentElement.dataset.nav = next;
+      try { localStorage.setItem('clms-nav', next); } catch (_) { /* 隐私模式 */ }
+      syncNav();
     },
   });
   bus.on('badge', ({ id, text }) => {

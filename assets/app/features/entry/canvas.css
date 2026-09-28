@@ -30,9 +30,18 @@
 .paper input:focus { outline: none; border-color: var(--accent); background: var(--surface-1); }
 
 .mat { display: grid; gap: var(--sp-2); }
-.mat__line { display: flex; justify-content: center; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
-.mat__title input { text-align: center; font-size: var(--text-xl); font-weight: var(--weight-bold); width: 12em; letter-spacing: 0.06em; }
-.mat__by input { text-align: center; font-size: var(--text-sm); color: var(--fg-2); width: 7em; }
+/* 标题独占一行、作者和出处另起一行；都是会自动换行的文本框（field-sizing 支持时按内容定宽） */
+.mat__head { display: grid; gap: var(--sp-0_5); justify-items: center; }
+.mat__title { width: 100%; }
+.mat__title .mat__ta { text-align: center; font-family: var(--font-read); font-size: var(--text-xl); font-weight: var(--weight-bold); line-height: var(--leading-tight); letter-spacing: 0.06em; }
+.mat__byline { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 var(--sp-2); width: 100%; }
+.mat__by .mat__ta { text-align: center; font-size: var(--text-sm); color: var(--fg-2); }
+.mat__by--author { flex: 0 1 10em; }
+.mat__by--source { flex: 1 1 18em; max-width: 36em; }
+@supports (field-sizing: content) {
+  .mat__by { flex: 0 1 auto; max-width: 100%; }
+  .mat__by .mat__ta { field-sizing: content; min-width: 4em; max-width: 100%; width: auto; }
+}
 .mat__text { position: relative; }
 .mat__text:not(.is-open) { max-height: 15.5em; overflow: hidden; mask-image: linear-gradient(to bottom, black 62%, transparent); }
 .mat__read { padding: 0 var(--sp-2); }
@@ -86,7 +95,6 @@
 @media (max-width:760px){
   .q__stem, .q__blank, .q__ans, .q__extra { padding-left: 0; }
   .q__more { padding-left: var(--sp-2); }
-  .mat__title input { width: 100%; }
 }
 
 /* 画布末尾「添加板块」：低调的虚线入口 */

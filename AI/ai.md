@@ -7,7 +7,7 @@
 - 配置：`ai_base_url`（自动补 `/chat/completions`）、`ai_api_key`、`ai_model`、`ai_timeout`（默认 150 秒）、`ai_max_tokens`（默认 16000，可在设置页调整）。`temperature` 固定 0.1。模型回复 `finish_reason=length` 时报告输出上限和思考 token 用量（若接口提供），不把截断的 JSON 当成有效草稿。
 - 图片：有 Pillow 时转成 JPEG、宽度缩到 1600；高 / 宽 > 3.2 的长截图切成若干段（段高约 2.2 倍宽，重叠 15%），按顺序作为多张图发送。没有 Pillow 就原图直发。
 - 回复解析：去掉 Markdown 围栏，取第一个 `{` 到最后一个 `}` 之间的 JSON。解析失败、HTTP 错误、超时都会变成草稿上的 `error`，对话里显示原因和「重试」。原始模型文本不显示在错误消息中。
-- 后台任务在草稿暂存文件的 `activity` 中记录实际经过的阶段与时间：排队 → 处理原图 / 整理修改要求 → 调用模型 → 解析回复 / 比对改动 → 保存草稿。阶段失败或服务重启时标记中断；这些记录不进入 Ledger，也不包含模型内部推理文本。
+- 后台任务在草稿暂存文件的 `activity` 中记录实际经过的阶段与时间：排队 → 处理原图 / 整理修改要求 → 调用模型 → 解析回复 / 比对改动 → 保存草稿。阶段失败或服务重启时标记中断；这些记录不进入 Ledger。旧流程不展示思考；Agent 模式展示（见「对话时间线与实时流」）。
 
 ## 识图（EXTRACT_PROMPT）
 
@@ -76,23 +76,35 @@ template  杜甫《春望》中……两句是：“{书写区域1}，{书写区
 
 一次 run = 若干轮；一轮 = 把上下文发给模型（`ai_assist.chat`，带 `tools`）→ 模型回复文字和 / 或工具调用 → 按顺序执行工具 → 结果作为 `tool` 消息回到上下文。模型不再调用工具就结束。
 
-- 事件：`agent_start / turn_start / message_end / tool_start / tool_update / tool_end / turn_end / steer / agent_end`，由 `drafts._Host.event` 落到草稿消息的 `steps`，前端轮询显示。
+- 事件：`agent_start / turn_start / message_start / delta / toolcall_delta / message_end / tool_start / tool_update / tool_end / sub / turn_end / steer / agent_end`，由 `draft_runs.Host.event` 变成对话里的块（见下一节），经 SSE 实时推给前端。
 - 参数校验：必填项与类型（字符串数字会按 schema 转成整数）；不合法、找不到工具、工具抛 `ToolError / ValueError / KeyError` 都变成一条错误结果回给模型，让它自己改。
 - 截断：`finish_reason=length` 时这一轮的工具调用一律不执行，回一条「参数可能被截断，请拆小重发」。
 - 插话（steering）：run 进行中用户再发话进 `agent.inbox`，每轮结束时读进上下文；模型本来要停也会再看一遍队列。run 刚结束时到的插话由宿主接着再跑一次。
 - 停止（abort）：每次请求模型前、每个工具前检查；`/api/draft/abort` 同时作废这次 run 的令牌，之后它的写入全部丢弃（已做的改动保留，可「回到修改前」）。
 - 上限：`agent_max_turns`（默认 30，子代理 `agent_sub_turns` 16）；到上限时在回复里说明。
 - 系统说明不用 system 角色，并进第一条用户消息（与旧流程一样兼容不建议设 system 的视觉模型）。
-- 图片：消息里只存引用（`{page}` / `{image}`），发送时才转 data URL 并按（图片, 宽度）缓存；只发本次 run 的图，更早的换成一句占位，需要时模型调用 `view_pages`，图片作为下一条用户消息附上。页数 ≤ 2 时主代理看全分辨率（1600），否则看 1024 宽的全卷；子代理看自己页的全分辨率。
+- 图片：消息里只存引用（`{page}` / `{image}`），发送时才转 data URL 并按（图片, 宽度, 旋转）缓存；页序、旋转、每页说明来自准备阶段（`draft.pages`），说明会写进提示词；只发本次 run 的图，更早的换成一句占位，需要时模型调用 `view_pages`，图片作为下一条用户消息附上。页数 ≤ 2 时主代理看全分辨率（1600），否则看 1024 宽的全卷；子代理看自己页的全分辨率。
 - 上下文超过 48 条时保留第一条 + 从某条 assistant 开始的最近若干条；持久化的 `agent.messages` 最多 160 条，从一条真实用户消息处截断，不拆开工具调用与结果。
+
+### 对话时间线与实时流（`draft_runs.py`、`live.py`，v0.3）
+
+目标是 Pi / Claude Code 那样的 Harness 交互：看得见模型在想什么、每次调了什么工具，而不是一个等半天的进度块。
+
+- **流式**：`ai_assist.chat` 带 `stream: true`，逐片解析 SSE：`delta.reasoning_content`（或 `reasoning`、正文里的 `<think>…</think>`，由 `ThinkSplitter` 拆开）→ 思考；`delta.content` → 正文；`delta.tool_calls[i].function.arguments` → 工具参数。服务端不支持流式、直接回 JSON 时照常解析。思考只展示，不回传给模型。
+- **harness 事件** → `draft_runs.Host.event` → **块**：`message_start` 开一条新消息；`delta(thinking)` 开 / 续思考块；`delta(text)` 收掉思考块、开 / 续正文块；`toolcall_delta` 收掉前两者、按下标开工具块（状态 preparing，参数逐字）；`message_end` 定稿（非流式时补建块），工具块状态 pending；`tool_start / tool_update / tool_end` 更新同一个工具块（running → done / error，结果前 6000 字）。`sub` 事件（子代理）递归处理，块带 `parent`（delegate 工具块 id）和 `task`。run 结束追加一个 `run` 块（状态、轮数、工具次数、用时、改动芯片、base_revision）。
+- **写盘与推送**：块的开始 / 状态变化 / 结束在锁内写进草稿文件，并推 `{type: "block", block}`；逐字内容只进 `live.py` 内存并推 `{type: "delta", id, field, text}`；改动草稿（`flush`）和状态变化推 `{type: "status"}`；插话挪位、停止推 `{type: "reload"}`。读草稿时 `live.overlay` 把进行中的逐字内容盖上去，`live_seq` 告诉前端从哪条事件接着订阅。
+- **用量**：每条模型消息结束和每次工具结束推 `{type: "stats", stats}`（见「模型接口」）。
+- **SSE**：`GET /api/draft/events?id=&since=`（`Last-Event-ID` 优先），每 15 秒心跳，5 分钟后让浏览器自动重连；缓冲区（每份草稿 4000 条）不够时推 reload。
+- **系统说明**要求模型每次调用工具前先用一句话说明要做什么（没有思考输出的模型也有「边想边做」的可见过程）。
+- 停止：`draft_runs.abort` 作废令牌、设停止信号；流式读取中的 `on_delta` 检查到停止会立刻抛出，连接随之关闭；进行中的块写回已收到的内容，标为已停止，追加 `run` 块（带这次已做的改动，可回到修改前）。
 
 ### 任务与工具集（`agent.run`）
 
 | 任务 | 触发 | 工具 |
 | --- | --- | --- |
-| `extract` | 上传试卷 | 草稿工具 + `delegate` |
+| `extract` | 上传后在准备阶段确认页面、点「开始识别」 | 草稿工具 + `delegate` |
 | `revise`（对话） | 在对话里发话 | 草稿工具 + `delegate` + `draft_commit` + 题库 + 记录 + 复习反馈；已入库的草稿只剩 `draft_view` / `view_pages` + 后三类 |
-| `review` | 复习页「拍照交给 AI 批改」 | 复习反馈 + 记录 + `library_search` / `library_get` + `view_pages` |
+| `review` | `POST /api/drafts {images, review_session}` → 准备阶段确认 → 「开始批改」。0.5 起复习页不再有入口（改为右侧的「复习助手」，见文末），接口与已有的批改会话保留 | 复习反馈 + 记录 + `library_search` / `library_get` + `view_pages` |
 
 草稿工具（`agent_draft.py`，一次 run 共用一个 `Workspace`，每次改动在锁内取快照并写进本次 run 的那一版 revision）：
 
@@ -123,4 +135,23 @@ template  杜甫《春望》中……两句是：“{书写区域1}，{书写区
 
 ### 模型接口（`ai_assist.chat`）
 
-`POST /chat/completions`，`messages` + `tools`，`temperature` 0.1，`max_tokens` 取设置。返回 `{content, tool_calls:[{id, name, arguments}], finish_reason, usage}`；`reasoning_content` 不保存、不展示。带工具的请求被 400/404/422 拒绝且报错提到 tool / function 时，提示换模型或关掉 Agent 模式。
+`POST /chat/completions`，`messages` + `tools`，`temperature` 0.1，`max_tokens` 取设置，`stream: true`（服务回 JSON 也能解析）。返回 `{content, thinking, tool_calls:[{id, name, arguments}], finish_reason, usage: {input, output, estimated}, timing: {ttft, gen, tps}}`。思考（`reasoning_content` / `reasoning` / `<think>`）只展示，不回传给模型。带工具的请求被 400/404/422 拒绝且报错提到 tool / function 时，提示换模型或关掉 Agent 模式。
+
+用量：请求带 `stream_options: {include_usage: true}`，用服务回的 `prompt_tokens / completion_tokens`；服务不认这个参数（400 / 422）时去掉重发，并按 API 地址记住（进程内），改用估算——`approx_tokens`：汉字约 1 token、其余约 4 字符 1 token，图片按 800；`estimated: true`。`ttft` 是首个片段到达的秒数，`tps` = 输出 token ÷（最后一片 − 第一片），生成太短（< 0.05 秒）记 0。
+
+草稿上的累计（`agent.stats`，`draft_runs.Host._count`）：每条模型消息结束时 `turns`（主代理）或 `sub_turns`（子代理）+1，累加 `input_total / output_total`；主代理那次的输入 + 输出记为当前上下文 `context`；有效速度更新 `tps / ttft`；每次工具结束 `tool_calls` +1。每次变化推一条 `{type: "stats", stats}`（带 `window` = 设置里的 `ai_context_window`，默认 128000），前端输入框的圆环用它。
+
+## 复习助手（`clms/review_ai.py`，v0.5）
+
+复习评分页右侧的 AI。它**不是 Agent**：不调用工具、不写 Ledger，只回答和给建议；评分、反馈由学生点「采用」后经已有接口写入。接口与事件见 `api.md`「复习助手」。
+
+- **无状态**：对话由前端保存（按「复习 + 题」），每次请求带最近 `MAX_TURNS`（16）轮；照片只传编号，最近 `MAX_IMAGES`（4）张发原图（1280 宽），更早的在文字里写一句「已省略」。
+- **上下文**（并进第一条用户消息，不用 system 角色，和录入对话一致）：助手规则与评分档 → 这道题（板块、卷上题号 / 原卷题号、题型、分值）→ 材料原文（最多 6000 字）→ 题干（默写把 `{书写区域}` 换成横线）→ 参考答案（阅卷标准）→ 解析 / 录入时的作答 / 错因 → 以前的复习（最近 6 条：日期、评分、反馈）→ 本次复习的评分。学生还没对答案、也还没评分时，要求模型除非学生要求否则不直接说出参考答案。
+- **三种模式**（任务说明拼在这一轮用户消息的末尾）：
+  - `ask`：直接回答。
+  - `grade`：逐个采分点判断，最后一行 `【建议】{"grade": n, "note": "…"}`；grade 按板块校验（阅读 0–3，默写 0 / 1 / 3），不合法就丢掉只留 note；对话里找不到作答时要求模型请学生发作答，不编分、不写建议。
+  - `feedback`：按当前评分写一条 40 字以内的反馈，最后一行 `【建议】{"note": "…"}`。
+  - 文字为空时用默认话（「请对照参考答案给我的作答打分。」等）。
+- **解析**：取最后一个「【建议】」之后的 JSON（`ai_assist.extract_json`），正文去掉这一行作为 `reply`；流式期间前端也把「【建议】」之后的内容藏起来。
+- **流式**：`ai_assist.chat(stream)` 在后台线程里跑，思考 / 正文逐字经队列变成 SSE；客户端断开时设停止信号，下一片到达时抛出，连接随之关闭。
+- 假模型（`tests/fake_ai.py`）：第一条消息含「## 复习助手」时按任务说明给确定性回答——打分时对话里有「作答：」或照片才给 `【建议】{"grade": 2, …}`。

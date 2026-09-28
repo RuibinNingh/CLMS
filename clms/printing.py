@@ -19,13 +19,14 @@ CSS = """
 body { margin: 0; color: #111; font-family: 'Songti SC','STSong','Noto Serif SC','Source Han Serif SC','SimSun',serif;
        font-size: 11pt; line-height: 1.75; }
 .sheet { max-width: 178mm; margin: 0 auto; }
-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1.5pt solid #111;
-         padding-bottom: 2mm; margin-bottom: 5mm; }
-header h1 { font-size: 16pt; margin: 0; letter-spacing: 0.1em; }
-header .meta { font-size: 9pt; color: #444; font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 1mm 4mm;
+         border-bottom: 1.5pt solid #111; padding-bottom: 2mm; margin-bottom: 5mm; }
+header h1 { font-size: 16pt; margin: 0; letter-spacing: 0.1em; flex: 1 1 60%; min-width: 0; overflow-wrap: anywhere; }
+header .meta { font-size: 9pt; color: #444; font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif; white-space: nowrap; }
 section { margin-bottom: 7mm; }
-h2 { font-size: 12pt; margin: 0 0 2mm; font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif; }
-h2 small { font-weight: normal; color: #555; margin-left: 2mm; }
+h2 { font-size: 12pt; margin: 0 0 1mm; font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif; overflow-wrap: anywhere; }
+.byline { font-size: 9pt; color: #555; margin: 0 0 2.5mm; font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+          overflow-wrap: anywhere; }
 .text { border-left: 1pt solid #999; padding-left: 4mm; margin-bottom: 4mm; }
 .text p { margin: 0 0 1mm; text-indent: 2em; }
 .text.poetry p { text-indent: 0; text-align: center; letter-spacing: 0.08em; }
@@ -122,8 +123,9 @@ def render_session(session: dict, with_answers: bool = False) -> str:
                 blocks.append("</section>")
             mat = materials.get(mid, {})
             byline = " ".join(x for x in (mat.get("author"), mat.get("source")) if x)
-            blocks.append(f'<section><h2>{_e(GENRE_BY_CODE[genre]["short"])} · {_e(mat.get("title") or "无题")}'
-                          f'<small>{_e(byline)}</small></h2>{_paragraphs(mat.get("text"), genre)}')
+            by = f'<p class="byline">{_e(byline)}</p>' if byline else ""      # 作者 / 出处另起一行：长标题、长出处都能完整换行
+            blocks.append(f'<section><h2>{_e(GENRE_BY_CODE[genre]["short"])} · {_e(mat.get("title") or "无题")}</h2>'
+                          f'{by}{_paragraphs(mat.get("text"), genre)}')
             current_mat = mid
         score = f'（{item["score"]:g} 分）' if isinstance(item.get("score"), (int, float)) else ""
         lines = "".join("<div></div>" for _ in range(int(item.get("blank_lines") or 0)))

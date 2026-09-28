@@ -8,28 +8,48 @@ import datetime
 from . import ledger
 from .common import load_config
 from .projections import context, get_state
-from .scheduling import DICTATION_GRADES, GRADES, next_review_day, plan_session
+from .scheduling import DICTATION_GRADES, GRADES, NEVER, next_review_day, plan_session
 from .taxonomy import GENRE_BY_CODE, GENRE_ORDER, MATERIAL_MINUTES, item_minutes
 
 
-def plan(vault: str, minutes=None, genres=None, fill=True) -> dict:
+def plan(vault: str, minutes=None, genres=None, fill=True, qtypes=None, pinned=None, exclude=None) -> dict:
+    """推荐一次复习（不写 Ledger）。pinned = 用户自选必排的题，exclude = 用户从推荐里移掉的题；
+    已在未完成复习里的题不重复推荐。参数与规则见 AI/algorithm.md「排复习」。"""
     ctx = context(vault)
     state = get_state(vault)
     horizon = next_review_day(ctx["today"], ctx["weekdays"])
     minutes = minutes or load_config(vault).get("session_minutes") or 40
     items = state.all_items(ctx)
-    result = plan_session(items, float(minutes), ctx["today"], horizon, genres=genres or None, fill=bool(fill))
+    result = plan_session(items, float(minutes), ctx["today"], horizon, genres=genres or None, fill=bool(fill),
+                          qtypes=qtypes or None, pinned=pinned, exclude=exclude, busy=open_item_ids(state),
+                          t=ctx["tuning"])
     index = {it["id"]: it for it in items}
-    result["items"] = [dict(entry, item=_brief(index[entry["id"]])) for entry in result["items"]]
+    result["items"] = [dict(entry, item=brief(index[entry["id"]])) for entry in result["items"]]
     result["horizon"] = horizon.isoformat()
     return result
 
 
-def _brief(item) -> dict:
+def open_item_ids(state) -> set:
+    """还在未完成复习里、没评分的题（排复习时不重复推荐）。"""
+    out = set()
+    for sess in state.sessions.values():
+        if sess["cancelled"]:
+            continue
+        out.update(e["id"] for e in sess["items"] if e["id"] not in sess["grades"])
+    return out
+
+
+def brief(item) -> dict:
+    """排复习 / 挑题用的精简行：够显示、够估时。"""
+    sched = item["sched"]
     return {"id": item["id"], "genre": item["genre"], "qtype": item.get("qtype", ""), "no": item.get("no", ""),
-            "stem": item["stem"][:80], "material_id": item.get("material_id"),
-            "material_title": item.get("material_title", ""), "status": item["sched"]["status"],
-            "mastery": item["sched"]["mastery"], "due": item["sched"]["due"]}
+            "stem": item["stem"][:80], "material_id": item.get("material_id"), "source": item.get("source", ""),
+            "material_title": item.get("material_title", ""), "status": sched["status"], "kind": sched["kind"],
+            "mastery": sched["mastery"], "decayed": sched["decayed"], "due": sched["due"],
+            "last_review": sched["last_review"] if sched["reviews"] else "", "last_grade": sched["last_grade"],
+            "reviews": sched["reviews"], "leech": sched["leech"], "created_at": item.get("created_at", ""),
+            "minutes": item_minutes(item["genre"], item.get("qtype", "")),
+            "material_minutes": MATERIAL_MINUTES.get(item["genre"], 0.0) if item.get("material_id") else 0.0}
 
 
 def create(vault: str, item_ids: list, minutes=0, title="") -> dict:
@@ -225,9 +245,10 @@ def summary(vault: str) -> dict:
     minutes = sum(item_minutes(it["genre"], it.get("qtype", "")) for it in due) \
         + sum(MATERIAL_MINUTES.get(genre, 0) for genre, _ in mats)
     upcoming = None
-    if not due and items:
-        first = min(it["sched"]["due"] for it in items)
-        upcoming = {"date": first, "count": sum(1 for it in items if it["sched"]["due"] <= first)}
+    scheduled = [it for it in items if it["sched"]["due"] != NEVER]
+    if not due and scheduled:
+        first = min(it["sched"]["due"] for it in scheduled)
+        upcoming = {"date": first, "count": sum(1 for it in scheduled if it["sched"]["due"] <= first)}
     week_ago = (ctx["today"] - datetime.timedelta(days=6)).isoformat()
     reviewed_week = sum(1 for it in state.items.values() for e in it["events"]
                         if e["kind"] == "review" and (e["at"] or "")[:10] >= week_ago)

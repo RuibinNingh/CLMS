@@ -1,7 +1,7 @@
 """AI 录入（OpenAI 兼容协议，只用标准库；调用方式与 OMRS ai_assist.py 相同）。
 
 三种调用：
-- chat(messages, tools)：Agent harness 的多轮工具调用（见 harness.py / agent.py）。
+- chat(messages, tools, on_delta)：Agent harness 的多轮工具调用，流式返回思考、正文和工具参数（见 harness.py / agent.py）。
 - extract(images)：看图 → 草稿 groups（原文 / 小题 / 题型 / 答案 / 留白 / 默写模板）。
 - revise(groups, history, instruction)：对话修订 → {reply, groups}。每次都把完整草稿发过去（无状态），
   模型返回完整草稿，由 draft_schema.diff() 算出改动，前端据此高亮。
@@ -13,6 +13,7 @@
 import base64
 import io
 import json
+import time
 import mimetypes
 import re
 import urllib.error
@@ -41,7 +42,8 @@ def ai_ready(vault: str) -> bool:
     return all(str(cfg.get(k) or "").strip() for k in ("ai_base_url", "ai_api_key", "ai_model"))
 
 
-def image_data_urls(path: str, max_width: int = MAX_WIDTH) -> list:
+def image_data_urls(path: str, max_width: int = MAX_WIDTH, rotate: int = 0) -> list:
+    """rotate：顺时针旋转的角度（0/90/180/270，准备阶段用户设置）；没有 Pillow 时无法旋转，原图直发。"""
     mime = mimetypes.guess_type(path)[0] or "image/jpeg"
     with open(path, "rb") as fh:
         data = fh.read()
@@ -52,6 +54,8 @@ def image_data_urls(path: str, max_width: int = MAX_WIDTH) -> list:
         img = img.convert("RGB")
     except Exception:  # noqa: BLE001 - 不是 Pillow 能读的格式就原样发
         return [f"data:{mime};base64," + base64.b64encode(data).decode()]
+    if rotate % 360:
+        img = img.rotate(-(rotate % 360), expand=True)
     if img.width > max_width:
         img = img.resize((max_width, round(img.height * max_width / img.width)))
     strips = [img]
@@ -82,32 +86,77 @@ def _config(vault: str):
     return cfg, base, key, model
 
 
-def _post(vault: str, payload: dict, tools_used: bool = False) -> dict:
-    """POST /chat/completions，返回解析后的响应 JSON；网络 / HTTP / 超时 / 格式错误统一转成中文 ValueError。"""
+class ModelHTTPError(ValueError):
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
+
+
+_NO_USAGE_OPTION = set()      # 不认 stream_options 的服务（按 API 地址记住，进程内有效）
+
+
+def approx_tokens(text) -> int:
+    """粗估 token：汉字（含全角标点）约 1 个，其余字符约 4 个一个。服务没回 usage 时用。"""
+    text = str(text or "")
+    wide = sum(1 for ch in text if ord(ch) > 0x2E7F)
+    return wide + (len(text) - wide + 3) // 4
+
+
+def estimate_prompt(messages, tools=None) -> int:
+    total = approx_tokens(json.dumps(tools, ensure_ascii=False)) if tools else 0
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            for part in content:
+                total += 800 if part.get("type") == "image_url" else approx_tokens(part.get("text"))
+        else:
+            total += approx_tokens(content)
+        for call in m.get("tool_calls") or []:
+            total += approx_tokens((call.get("function") or {}).get("arguments"))
+        total += 4
+    return total
+
+
+def _open(vault: str, payload: dict, tools_used: bool = False):
+    """发请求，返回 (response, timeout)；调用方负责关闭。HTTP / 网络 / 超时错误统一转成中文 ValueError。"""
     cfg, base, key, _ = _config(vault)
     request = urllib.request.Request(
         _endpoint(base), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), method="POST",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}", "Accept": "application/json"})
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                 "Accept": "text/event-stream, application/json"})
     timeout = int(cfg.get("ai_timeout") or 150)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8", "replace")
+        return urllib.request.urlopen(request, timeout=timeout), timeout
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:400] if exc.fp else ""
         hint = ""
         if tools_used and exc.code in (400, 404, 422) and re.search(r"tool|function", detail, re.I):
             hint = "。这个模型可能不支持工具调用（function calling）：换一个支持的模型，或到「设置」关闭 Agent 模式"
-        raise ValueError(f"模型服务返回 HTTP {exc.code}：{detail or exc.reason}{hint}")
+        raise ModelHTTPError(f"模型服务返回 HTTP {exc.code}：{detail or exc.reason}{hint}", exc.code)
     except urllib.error.URLError as exc:
         raise ValueError(f"连不上模型服务，检查 API 地址和网络：{getattr(exc, 'reason', exc)}")
     except TimeoutError:
         raise ValueError(f"模型超过 {timeout} 秒没有回复，可以重试或换一个更快的模型")
+
+
+def _parse_json(raw: str) -> dict:
     try:
         response = json.loads(raw)
         response["choices"][0]["message"]
     except Exception:  # noqa: BLE001
         raise ValueError("模型接口的回复格式无法解析")
     return response
+
+
+def _post(vault: str, payload: dict, tools_used: bool = False) -> dict:
+    """POST /chat/completions（不流式），返回解析后的响应 JSON。"""
+    response, timeout = _open(vault, payload, tools_used)
+    try:
+        with response:
+            raw = response.read().decode("utf-8", "replace")
+    except TimeoutError:
+        raise ValueError(f"模型超过 {timeout} 秒没有回复，可以重试或换一个更快的模型")
+    return _parse_json(raw)
 
 
 def _text_of(message) -> str:
@@ -134,26 +183,148 @@ def call_model(vault: str, text: str, images: list) -> str:
     return _text_of(choice["message"])
 
 
-def chat(vault: str, messages: list, tools=None) -> dict:
-    """带工具的多轮调用（Agent harness 用）。messages 已是 OpenAI 格式。
-    返回 {content, tool_calls:[{id, name, arguments(原始字符串)}], finish_reason, usage}；
-    finish_reason=length 不在这里报错，由 harness 决定怎么处理被截断的工具调用。"""
-    cfg, _, _, model = _config(vault)
+class ThinkSplitter:
+    """有些模型把思考写在正文的 <think>…</think> 里：流式拆成 thinking / text 两路（标签可能被切在两个分片之间）。"""
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self, emit):
+        self.emit, self.buf, self.inside = emit, "", False
+
+    def feed(self, text: str):
+        self.buf += text
+        while self.buf:
+            tag = self.CLOSE if self.inside else self.OPEN
+            at = self.buf.find(tag)
+            if at >= 0:
+                if at:
+                    self.emit("thinking" if self.inside else "text", self.buf[:at])
+                self.buf, self.inside = self.buf[at + len(tag):], not self.inside
+                continue
+            keep = next((n for n in range(len(tag) - 1, 0, -1) if self.buf.endswith(tag[:n])), 0)
+            out, self.buf = (self.buf[:-keep], self.buf[-keep:]) if keep else (self.buf, "")
+            if out:
+                self.emit("thinking" if self.inside else "text", out)
+            break
+
+    def flush(self):
+        if self.buf:
+            self.emit("thinking" if self.inside else "text", self.buf)
+            self.buf = ""
+
+
+def chat(vault: str, messages: list, tools=None, on_delta=None) -> dict:
+    """带工具的多轮调用（Agent harness 用），流式。messages 已是 OpenAI 格式。
+    on_delta(kind, data)：kind = thinking / text（data 为文字片段）或 toolcall（data = {index, name, delta}）。
+    思考来自 delta.reasoning_content / reasoning，或正文里的 <think>；它只用于展示，不回传给模型。
+    服务端不支持流式、直接回 JSON 时照常解析（一次性给出全部片段）。
+    返回 {content, thinking, tool_calls:[{id, name, arguments}], finish_reason,
+          usage: {input, output, estimated}, timing: {ttft, gen, tps}}。
+    usage 优先用服务返回的（请求带 stream_options.include_usage；服务不认这个参数时自动去掉重发，并记住）。"""
+    cfg, base, _, model = _config(vault)
     payload = {"model": model, "messages": messages, "temperature": 0.1,
-               "max_tokens": int(cfg.get("ai_max_tokens") or 6000)}
+               "max_tokens": int(cfg.get("ai_max_tokens") or 6000), "stream": True}
     if tools:
         payload["tools"] = tools
-    response = _post(vault, payload, tools_used=bool(tools))
-    choice = response["choices"][0]
-    message = choice["message"]
-    calls = []
-    for n, call in enumerate(message.get("tool_calls") or []):
-        fn = call.get("function") or {}
-        args = fn.get("arguments")
-        calls.append({"id": str(call.get("id") or f"call_{n}"), "name": str(fn.get("name") or ""),
-                      "arguments": args if isinstance(args, str) else json.dumps(args or {}, ensure_ascii=False)})
-    return {"content": _text_of(message), "tool_calls": calls, "finish_reason": choice.get("finish_reason") or "",
-            "usage": response.get("usage") or {}}
+    if base not in _NO_USAGE_OPTION:
+        payload["stream_options"] = {"include_usage": True}
+    emit = on_delta or (lambda kind, data: None)
+    parts = {"thinking": [], "text": []}
+    clock = {"start": time.time(), "first": None}
+
+    def route(kind, text):
+        parts[kind].append(text)
+        emit(kind, text)
+
+    def mark():
+        if clock["first"] is None:
+            clock["first"] = time.time()
+
+    splitter = ThinkSplitter(route)
+    slots, finish, usage = {}, "", {}
+    try:
+        response, timeout = _open(vault, payload, tools_used=bool(tools))
+    except ModelHTTPError as exc:
+        if "stream_options" not in payload or exc.status not in (400, 422):
+            raise
+        _NO_USAGE_OPTION.add(base)
+        payload.pop("stream_options")
+        response, timeout = _open(vault, payload, tools_used=bool(tools))
+    try:
+        with response:
+            if "event-stream" not in (response.headers.get("Content-Type") or ""):
+                data = _parse_json(response.read().decode("utf-8", "replace"))
+                choice = data["choices"][0]
+                message = choice["message"]
+                reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+                if reasoning:
+                    route("thinking", reasoning)
+                splitter.feed(_text_of(message))
+                for n, call in enumerate(message.get("tool_calls") or []):
+                    fn = call.get("function") or {}
+                    args = fn.get("arguments")
+                    args = args if isinstance(args, str) else json.dumps(args or {}, ensure_ascii=False)
+                    slots[n] = {"id": str(call.get("id") or ""), "name": str(fn.get("name") or ""), "arguments": args}
+                    emit("toolcall", {"index": n, "name": slots[n]["name"], "delta": args})
+                finish, usage = choice.get("finish_reason") or "", data.get("usage") or {}
+            else:
+                for raw in response:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    body = line[5:].strip()
+                    if body == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(body)
+                    except ValueError:
+                        continue
+                    if chunk.get("error"):
+                        raise ValueError("模型服务返回错误：" + str(chunk["error"])[:300])
+                    usage = chunk.get("usage") or usage
+                    for choice in chunk.get("choices") or []:
+                        delta = choice.get("delta") or {}
+                        if delta:
+                            mark()
+                        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+                        if isinstance(reasoning, str) and reasoning:
+                            route("thinking", reasoning)
+                        content = delta.get("content")
+                        if isinstance(content, str) and content:
+                            splitter.feed(content)
+                        for call in delta.get("tool_calls") or []:
+                            n = int(call.get("index") or 0)
+                            slot = slots.setdefault(n, {"id": "", "name": "", "arguments": ""})
+                            fn = call.get("function") or {}
+                            if call.get("id"):
+                                slot["id"] = str(call["id"])
+                            if fn.get("name") and fn["name"] != slot["name"]:
+                                slot["name"] += fn["name"]
+                            args = fn.get("arguments")
+                            if args:
+                                args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+                                slot["arguments"] += args
+                                emit("toolcall", {"index": n, "name": slot["name"], "delta": args})
+                            elif fn.get("name"):
+                                emit("toolcall", {"index": n, "name": slot["name"], "delta": ""})
+                        finish = choice.get("finish_reason") or finish
+    except TimeoutError:
+        raise ValueError(f"模型超过 {timeout} 秒没有回复，可以重试或换一个更快的模型")
+    splitter.flush()
+    end = time.time()
+    calls = [{"id": slots[n]["id"] or f"call_{n}", "name": slots[n]["name"], "arguments": slots[n]["arguments"] or "{}"}
+             for n in sorted(slots)]
+    content, thinking = "".join(parts["text"]).strip(), "".join(parts["thinking"]).strip()
+    given = usage if isinstance(usage, dict) and usage.get("completion_tokens") is not None else None
+    output = int(given["completion_tokens"]) if given else \
+        approx_tokens(content) + approx_tokens(thinking) + sum(approx_tokens(c["arguments"]) for c in calls)
+    first = clock["first"] or end
+    gen = max(end - first, 0.001)
+    return {"content": content, "thinking": thinking, "tool_calls": calls, "finish_reason": finish,
+            "usage": {"input": int(given.get("prompt_tokens") or 0) if given else estimate_prompt(messages, tools),
+                      "output": output, "estimated": not given},
+            "timing": {"ttft": round(first - clock["start"], 2), "gen": round(gen, 2),
+                       "tps": round(output / gen, 1) if end - first > 0.05 else 0}}
 
 
 def extract_json(text: str) -> dict:
@@ -233,10 +404,11 @@ REVISE_PROMPT = """你是高中语文错题录入助手，正在和用户一起�
 {"reply": "一两句话说明改了什么（或回答问题）", "draft": {"groups": [ …完整草稿… ]}}"""
 
 
-def extract(vault: str, image_paths: list, hint: str = "", progress=None) -> dict:
+def extract(vault: str, image_paths: list, hint: str = "", progress=None, rotations=None) -> dict:
     if progress:
         progress("images", "处理原图", "local")
-    images = [url for path in image_paths for url in image_data_urls(path)]
+    rotations = list(rotations or []) + [0] * len(image_paths)
+    images = [url for path, rot in zip(image_paths, rotations) for url in image_data_urls(path, MAX_WIDTH, rot)]
     hint_text = f"## 用户补充说明\n{hint.strip()}\n\n" if hint and hint.strip() else ""
     if progress:
         progress("model", "调用识图模型", "model")

@@ -48,20 +48,41 @@ def _describe(state, item_id):
 def view_record(state, record: dict) -> dict:
     item = state.items.get(record["item_id"]) or state.deleted.get(record["item_id"]) or {}
     genre = item.get("genre", "")
-    return dict(record, genre=genre, item_name=_describe(state, record["item_id"]) if item else record["item_id"],
+    title = state.materials.get(item.get("material_id") or "", {}).get("title", "")
+    return dict(record, genre=genre, qtype=item.get("qtype", ""), material_title=title,
+                item_name=_describe(state, record["item_id"]) if item else record["item_id"],
                 grade_label=grade_label(genre, record["grade"]), voided=bool(record["voided_by"]),
                 item_deleted=record["item_id"] in state.deleted)
 
 
 def list_records(vault: str, item_id: str = "", session_id: str = "", include_voided: bool = True,
-                 limit: int = 100) -> dict:
+                 limit: int = 100, genre: str = "", grade: str = "", since: str = "", has_note: bool = False,
+                 offset: int = 0) -> dict:
+    """复习历史。grade：low（不会 / 部分 / 有错字）/ mid（基本）/ high（完整 / 全对）或具体分值；
+    since：YYYY-MM-DD，只看这天及以后的；has_note：只看写了反馈的。按日期倒序，offset / limit 分页。"""
     state = get_state(vault)
+
+    def genre_of(r):
+        item = state.items.get(r["item_id"]) or state.deleted.get(r["item_id"]) or {}
+        return item.get("genre", "")
+
+    def grade_ok(value):
+        if not grade:
+            return True
+        if grade in ("low", "mid", "high"):
+            return {"low": value <= 1, "mid": value == 2, "high": value == 3}[grade]
+        return str(value) == str(grade)
+
     rows = [r for r in state.reviews.values()
             if (not item_id or r["item_id"] == item_id) and (not session_id or r["session_id"] == session_id)
-            and (include_voided or not r["voided_by"])]
+            and (include_voided or not r["voided_by"]) and grade_ok(r["grade"])
+            and (not since or r["at"][:10] >= since) and (not has_note or (r.get("note") or "").strip())
+            and (not genre or genre_of(r) == genre)]
     rows.sort(key=lambda r: (r["at"], r["created_at"], r["commit_id"]), reverse=True)
     limit = max(1, min(500, int(limit or 100)))
-    return {"records": [view_record(state, r) for r in rows[:limit]], "total": len(rows)}
+    offset = max(0, int(offset or 0))
+    return {"records": [view_record(state, r) for r in rows[offset:offset + limit]], "total": len(rows),
+            "offset": offset, "limit": limit}
 
 
 def get_record(vault: str, commit_id: str) -> dict:

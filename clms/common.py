@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "ai_timeout": 150,
     "ai_max_tokens": 16000,
     "ai_concurrency": 2,
+    "ai_context_window": 128000,   # 模型上下文窗口（token），输入框的圆环按它算占用
     # Agent harness：录入对话直连工具调用的 Agent；模型不支持 function calling 时关掉，回到一次性识图 / 整份修订
     "ai_agent": True,
     "agent_subagents": 3,     # 大试卷委派子代理时同时跑几个

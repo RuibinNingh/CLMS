@@ -1,0 +1,64 @@
+/* 题库浏览：分面筛选侧栏、按篇分组卡片、批量操作条、复习记录分页。 */
+.fct { position: sticky; top: var(--sp-4); display: grid; gap: var(--sp-4); max-height: calc(100vh - 120px); overflow-y: auto; padding-right: var(--sp-1); font-size: var(--text-xs); }
+.fct__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); font-size: var(--text-sm); }
+.fct__grp { display: grid; gap: var(--sp-0_5); align-content: start; }
+.fct__grp h3 { font-size: var(--text-2xs); font-weight: var(--weight-medium); color: var(--fg-3); padding: 0 var(--sp-2) var(--sp-1); }
+.fct__grp h3 small { font-weight: var(--weight-regular); }
+.fct__grp--qtype { max-height: 280px; overflow-y: auto; }
+.fct__opt {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); width: 100%; min-height: var(--ctl-sm);
+  padding: var(--sp-1) var(--sp-2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--fg-2);
+  font-size: var(--text-xs); text-align: left; cursor: pointer;
+}
+.fct__opt span { min-width: 0; overflow-wrap: anywhere; }
+.fct__opt small { color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.fct__opt:hover:not(:disabled) { background: var(--surface-2); color: var(--fg-1); }
+.fct__opt[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: var(--weight-medium); }
+.fct__opt[aria-pressed="true"] small { color: var(--accent); }
+.fct__opt:disabled { opacity: .4; cursor: default; }
+@media (max-width:1500px){
+  .fct { display: none; position: static; max-height: none; overflow: visible; padding: var(--sp-4); grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    background: var(--surface-1); border: 1px solid var(--border-1); border-radius: var(--r-lg); }
+  .fct.is-open { display: grid; }
+  .fct__head { grid-column: 1 / -1; }
+}
+
+.lib__groups { display: grid; gap: var(--sp-3); }
+.grpc { display: grid; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--r-md); background: var(--surface-1); }
+.grpc__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.grpc__title { font-family: var(--font-read); font-size: var(--text-md); overflow-wrap: anywhere; }
+.grpc__by { font-size: var(--text-xs); color: var(--fg-2); }
+.grpc__stats { font-size: var(--text-2xs); color: var(--fg-3); }
+.grpc__meter { width: 72px; margin-left: auto; }
+.grpc__src { font-size: var(--text-2xs); color: var(--fg-3); overflow-wrap: anywhere; }
+.grpc__items { display: grid; gap: var(--sp-1); }
+.grpc .row { padding: var(--sp-2) var(--sp-3); background: var(--surface-0); border-color: transparent; }
+.grpc .row.is-active, .grpc .row.is-picked { border-color: var(--accent); }
+
+.lib__batch {
+  position: sticky; bottom: var(--sp-3); z-index: var(--z-sticky); display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4); border: 1px solid var(--border-2); border-radius: var(--r-md);
+  background: var(--surface-1); box-shadow: var(--elev-2); font-size: var(--text-sm);
+}
+.lib__batchacts { display: flex; flex-wrap: wrap; gap: var(--sp-1_5); margin-left: auto; }
+
+.hst__check { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-xs); color: var(--fg-2); }
+.hst__list { display: grid; gap: var(--sp-1); }
+.hst__row {
+  width: 100%; display: grid; grid-template-columns: 8em minmax(0, 1fr) auto auto; align-items: center; gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--r-md); background: var(--surface-1);
+  text-align: left; font-size: var(--text-sm); cursor: pointer;
+}
+.hst__row:hover { border-color: var(--border-2); }
+.hst__row.is-active { border-color: var(--accent); box-shadow: var(--ring-line); }
+.hst__row.is-void { opacity: .55; }
+.hst__row.is-void .chip { text-decoration: line-through; }
+.hst__row time { font-size: var(--text-xs); color: var(--fg-3); }
+.hst__what { display: flex; align-items: center; gap: var(--sp-1_5); min-width: 0; overflow-wrap: anywhere; }
+.hst__src { font-size: var(--text-2xs); }
+.hst__note { grid-column: 2 / -1; font-size: var(--text-xs); color: var(--fg-2); }
+@media (max-width:760px){
+  .hst__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .hst__row time, .hst__src { grid-column: 1 / -1; }
+  .hst__note { grid-column: 1 / -1; }
+}

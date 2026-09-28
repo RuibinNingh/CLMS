@@ -23,6 +23,7 @@ function view(s) {
       <div class="set__row">
         <label class="field"><span>超时（秒）</span><input class="input" name="ai_timeout" type="number" min="20" max="600" value="${c.ai_timeout}"></label>
         <label class="field"><span>输出上限（token）</span><input class="input" name="ai_max_tokens" type="number" min="1000" max="64000" step="1000" value="${c.ai_max_tokens}"><small>原文较长或模型会思考时，可适当调高</small></label>
+        <label class="field"><span>上下文窗口（token）</span><input class="input" name="ai_context_window" type="number" min="4000" max="2000000" step="1000" value="${c.ai_context_window}"><small>输入框旁的圆环按它显示上下文占用</small></label>
         <label class="field"><span>同时识别几张</span><input class="input" name="ai_concurrency" type="number" min="1" max="6" value="${c.ai_concurrency}"><small>模型限流时调小；新任务立即按新值排队</small></label>
       </div>
       <label class="set__check"><input type="checkbox" name="ai_agent" ${c.ai_agent ? html`checked` : ''}>
@@ -77,6 +78,7 @@ export const page = {
         save({ ai_base_url: f.get('ai_base_url').trim(), ai_api_key: f.get('ai_api_key').trim(), ai_model: f.get('ai_model').trim(),
           ai_timeout: Number(f.get('ai_timeout')) || 150, ai_max_tokens: Number(f.get('ai_max_tokens')) || 16000,
           ai_concurrency: Number(f.get('ai_concurrency')) || 2, ai_agent: f.get('ai_agent') === 'on',
+          ai_context_window: Number(f.get('ai_context_window')) || 128000,
           agent_subagents: Number(f.get('agent_subagents')) || 3, agent_max_turns: Number(f.get('agent_max_turns')) || 30 }, 'AI 设置已保存');
       },
       saveReview({ el }) {

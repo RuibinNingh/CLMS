@@ -33,7 +33,7 @@ class HarnessTests(unittest.TestCase):
     def make(self, replies, tools, **kw):
         seen = []
 
-        def llm(messages, schemas):
+        def llm(messages, schemas, on_delta=None):
             seen.append(messages)
             return replies.pop(0)
         agent = harness.Agent(llm=llm, tools=tools, system_prompt="SYS", render_images=lambda refs: ["data:x"] * len(refs),
@@ -173,11 +173,11 @@ class SourceExportTests(unittest.TestCase):
         os.makedirs(os.path.join(root, "clms"))
         os.makedirs(os.path.join(root, "语文", ".clms"))
         os.makedirs(os.path.join(root, "clms", "__pycache__"))
-        secret = "sk-test1234567890abcdef"
-        open(os.path.join(root, "clms", "a.py"), "w", encoding="utf-8").write(f"KEY = '{secret}'\n")
-        open(os.path.join(root, "clms", "__pycache__", "a.pyc"), "wb").write(b"x")
-        open(os.path.join(root, "语文", ".clms", "config.json"), "w").write("{}")
-        open(os.path.join(root, "README.md"), "w", encoding="utf-8").write("说明")
+        secret = "sk-" + "clmsTestSecret" + "0123456789ab"   # 拆开写：否则导出源码包时这行自己也会被脱敏，测试随之失效
+        write(os.path.join(root, "clms", "a.py"), f"KEY = '{secret}'\n")
+        write(os.path.join(root, "clms", "__pycache__", "a.pyc"), b"x")
+        write(os.path.join(root, "语文", ".clms", "config.json"), "{}")
+        write(os.path.join(root, "README.md"), "说明")
         save_config(root, {"ai_api_key": secret})
         data, name, meta = create_source_export(root, root=root)
         names = zipfile.ZipFile(io.BytesIO(data)).namelist()
@@ -205,16 +205,24 @@ class AgentFlowTests(test_core.ServerFlowTests):
 
     def upload(self, **extra):
         code, res = self.call("/api/drafts", dict({"images": [{"name": "a.png", "data": PNG}]}, **extra))
-        self.assertEqual(code, 200, res)
+        self.assertEqual((code, res["drafts"][0]["status"]), (200, "staged"), res)
+        code, started = self.call("/api/draft/start", {"id": res["drafts"][0]["id"]})
+        self.assertEqual(code, 200, started)
         return self.wait_ready(res["drafts"][0]["id"])
 
     def test_agent_extract_chat_commit_and_review(self):
         draft = self.upload()
         self.assertEqual(draft["status"], "ready", draft.get("error"))
         self.assertEqual([g["genre"] for g in draft["groups"]], ["modern", "dictation"])
-        seg = draft["messages"][-1]
-        delegate = next(s for s in seg["steps"] if s.get("name") == "delegate")
+        blocks = draft["messages"]
+        delegate = next(m for m in blocks if m["role"] == "tool" and m["name"] == "delegate")
         self.assertEqual([t["status"] for t in delegate["tasks"]], ["done", "done"])
+        self.assertTrue(json.loads(delegate["args_text"])["tasks"])                  # 工具参数可展开查看
+        subs = [m for m in blocks if m.get("parent") == delegate["id"]]
+        self.assertEqual({m["task"] for m in subs}, {1, 2})                            # 子代理的块挂在 delegate 下
+        self.assertTrue(any(m["role"] == "thinking" and not m.get("parent") for m in blocks))
+        self.assertEqual(blocks[-1]["role"], "run")
+        self.assertFalse(any(m.get("status") in ("streaming", "running", "preparing") for m in blocks))
         self.assertEqual(len(draft["revisions"]), 1)                    # 整次 run 只占一版
         self.assertEqual(draft["groups"][0]["items"][1]["iid"], "i2")
         self.call("/api/draft/message", {"id": draft["id"], "text": "第7题答案按采分点重写，留白 8 行"})
@@ -257,8 +265,10 @@ class AgentFlowTests(test_core.ServerFlowTests):
         draft = self.wait_ready(draft_id, rounds=200)
         lines = {i["no"]: i["blank_lines"] for i in draft["groups"][0]["items"]}
         self.assertEqual((lines["7"], lines["8"]), (5, 6))
-        roles = [m["role"] for m in draft["messages"][-3:]]
-        self.assertEqual(roles, ["ai", "user", "ai"])                     # 插话排在当时的位置
+        blocks = draft["messages"]
+        user8 = next(i for i, m in enumerate(blocks) if m["role"] == "user" and m.get("text") == "第8题留白 6 行")
+        tool8 = next(i for i, m in enumerate(blocks) if m["role"] == "tool" and '"8"' in (m.get("args_text") or ""))
+        self.assertLess(user8, tool8)                                     # 插话排在当时的位置，之后才执行
         self.assertIn("手动改了", json.dumps(drafts.load(self.vault, draft_id)["agent"]["messages"], ensure_ascii=False))
         self.call("/api/draft/message", {"id": draft_id, "text": "第7题留白 9 行"})
         code, stopped = self.call("/api/draft/abort", {"id": draft_id})
@@ -268,7 +278,95 @@ class AgentFlowTests(test_core.ServerFlowTests):
         _, after = self.call(f"/api/draft?id={draft_id}")
         self.assertEqual(len(after["messages"]), count)                  # 停止后的写入被丢弃
         self.assertEqual(after["status"], "ready")
-        self.assertFalse(any(m.get("status") == "running" for m in after["messages"]))   # 没开始就停了，或停在半路
+        self.assertFalse(any(m.get("status") in ("running", "streaming", "preparing", "pending")
+                             for m in after["messages"]))                # 没开始就停了，或停在半路
+
+    def test_stats_for_context_ring(self):
+        draft = self.upload()
+        stats = draft["stats"]
+        self.assertGreaterEqual(stats["turns"], 2)                        # 主代理：委派 → 检查 → 总结
+        self.assertGreaterEqual(stats["sub_turns"], 4)
+        self.assertGreater(stats["tool_calls"], 3)
+        self.assertGreater(stats["context"], 900)
+        self.assertEqual((stats["window"], stats["estimated"]), (128000, False))   # 服务回了 usage
+        self.assertGreater(stats["tps"], 0)
+
+    def test_usage_falls_back_when_stream_options_rejected(self):
+        from clms import ai_assist
+        os.environ["FAKE_AI_NO_STREAM_OPTIONS"] = "1"
+        try:
+            reply = ai_assist.chat(self.vault, [{"role": "user", "content": "你好"}],
+                                   [{"type": "function", "function": {"name": "draft_view", "parameters": {}}}])
+        finally:
+            os.environ.pop("FAKE_AI_NO_STREAM_OPTIONS")
+            ai_assist._NO_USAGE_OPTION.clear()
+        self.assertTrue(reply["usage"]["estimated"])
+        self.assertGreater(reply["usage"]["input"], 0)
+
+    def test_staging_reorder_rotate_split(self):
+        _, res = self.call("/api/drafts", {"images": [{"name": "a.png", "data": PNG}], "hint": "第一页"})
+        draft = res["drafts"][0]
+        other = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+        _, draft = self.call("/api/draft/pages", {"id": draft["id"], "add": [{"name": "b.gif", "data": other}]})
+        self.assertEqual(len(draft["pages"]), 2)
+        pages = list(reversed(draft["pages"]))
+        pages[0].update(rotate=90, note="答案页")
+        code, draft = self.call("/api/draft/pages", {"id": draft["id"], "pages": pages, "hint": "注意第二页"})
+        self.assertEqual((code, draft["pages"][0]["rotate"], draft["images"][0]), (200, 90, pages[0]["image"]))
+        code, bad = self.call("/api/draft/pages", {"id": draft["id"], "pages": [{"image": "0" * 24 + ".png"}]})
+        self.assertEqual(code, 400)
+        code, started = self.call("/api/draft/start", {"id": draft["id"], "split": True})
+        self.assertEqual((code, len(started["ids"])), (200, 2))
+        for draft_id in started["ids"]:
+            done = self.wait_ready(draft_id)
+            self.assertEqual(len(done["pages"]), 1)
+            self.assertIn("注意第二页", done["messages"][0]["text"])
+        code, _ = self.call("/api/draft/pages", {"id": started["ids"][0], "pages": []})
+        self.assertEqual(code, 400)                                       # 开始后不能再调页面
+
+    def test_history_views_rename_trash(self):
+        _, a = self.call("/api/drafts", {"chat": True})
+        _, b = self.call("/api/drafts", {"images": [{"name": "a.png", "data": PNG}]})
+        a, b = a["drafts"][0]["id"], b["drafts"][0]["id"]
+        _, listing = self.call("/api/drafts")
+        self.assertEqual((listing["counts"]["all"], listing["counts"]["active"], listing["counts"]["ready"]), (2, 1, 1))
+        self.call("/api/draft/rename", {"id": a, "name": "期中复盘"})
+        _, found = self.call("/api/drafts?q=" + urllib_quote("期中"))
+        self.assertEqual([d["id"] for d in found["drafts"]], [a])
+        self.call("/api/draft/discard", {"id": b})
+        _, trash = self.call("/api/drafts?view=trash")
+        self.assertEqual([d["id"] for d in trash["drafts"]], [b])
+        code, back = self.call("/api/draft/undiscard", {"id": b})
+        self.assertEqual((code, back["status"]), (200, "staged"))
+        code, _ = self.call("/api/draft/delete", {"id": b})
+        self.assertEqual(code, 400)                                       # 不在回收站不能彻底删
+        self.call("/api/draft/discard", {"id": b})
+        code, _ = self.call("/api/draft/delete", {"id": b})
+        self.assertEqual(code, 200)
+        _, listing = self.call("/api/drafts?view=all")
+        self.assertEqual((listing["counts"]["all"], listing["counts"]["trash"]), (1, 0))
+
+    def test_sse_streams_blocks_and_deltas(self):
+        _, res = self.call("/api/drafts", {"chat": True})
+        draft_id = res["drafts"][0]["id"]
+        seen = []
+
+        def reader():
+            with urllib_open(f"{self.base}/api/draft/events?id={draft_id}&since=0") as stream:
+                for raw in stream:
+                    line = raw.decode().strip()
+                    if line.startswith("data:"):
+                        seen.append(json.loads(line[5:]))
+                        if seen[-1].get("type") == "status" and seen[-1].get("status") == "ready":
+                            return
+        thread = threading.Thread(target=reader, daemon=True)
+        thread.start()
+        time.sleep(0.2)
+        self.call("/api/draft/message", {"id": draft_id, "text": "你好"})
+        thread.join(10)
+        kinds = {e["type"] for e in seen}
+        self.assertTrue({"block", "delta", "status"} <= kinds, kinds)
+        self.assertTrue(any(e["type"] == "delta" and e["field"] == "text" for e in seen))
 
     def test_source_export_endpoint(self):
         with urllib_open(self.base + "/api/source/export") as res:
@@ -285,6 +383,16 @@ class AgentFlowTests(test_core.ServerFlowTests):
                 return d
             time.sleep(0.05)
         self.fail("草稿一直在处理中")
+
+
+def write(path, data):
+    with open(path, "wb" if isinstance(data, bytes) else "w", **({} if isinstance(data, bytes) else {"encoding": "utf-8"})) as fh:
+        fh.write(data)
+
+
+def urllib_quote(text):
+    import urllib.parse
+    return urllib.parse.quote(text)
 
 
 def urllib_open(url):

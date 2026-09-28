@@ -1,5 +1,19 @@
 /* 外壳：左侧导航 + 右侧页面。录入页是工作台（整屏高，内部分栏各自滚动），其余页面正常滚动。 */
-.app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
+.app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns var(--dur-3) var(--ease-out); }
+.sidebar__row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-1); }
+.theme-toggle { justify-content: flex-start; gap: var(--sp-2); }
+.theme-toggle svg, .nav-toggle svg { width: 15px; height: 15px; }
+.nav-toggle { color: var(--fg-3); }
+@media (min-width:761px){
+  [data-nav="mini"] .app { grid-template-columns: var(--rail-width) minmax(0, 1fr); }
+  [data-nav="mini"] .sidebar { overflow: hidden; }
+  [data-nav="mini"] .brand { justify-content: center; padding: 0; }
+  [data-nav="mini"] .brand__name, [data-nav="mini"] .nav a span, [data-nav="mini"] .theme-toggle span, [data-nav="mini"] #app-version { display: none; }
+  [data-nav="mini"] .nav a { justify-content: center; padding-left: 0; padding-right: 0; }
+  [data-nav="mini"] .sidebar__foot, [data-nav="mini"] .sidebar__row { justify-items: center; justify-content: center; }
+  [data-nav="mini"] .theme-toggle { justify-content: center; }
+  [data-nav="mini"] .nav-toggle svg { transform: scaleX(-1); }
+}
 .sidebar {
   position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: var(--sp-6);
   padding: var(--sp-5) var(--sp-3); border-right: 1px solid var(--border-1); background: var(--surface-1);

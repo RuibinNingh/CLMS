@@ -10,6 +10,7 @@ import threading
 from . import ledger
 from .common import chinese_only, content_chars, short_hash, today as today_fn
 from .scheduling import derive, load_tuning, review_weekdays
+from .taxonomy import memory_kind
 
 
 def material_key(text: str):
@@ -215,7 +216,8 @@ class State:
         if not item:
             return None
         events = [e for e in item["events"]]
-        sched = derive(item["created_at"], events, ctx["weekdays"], ctx["today"], ctx["tuning"])
+        sched = derive(item["created_at"], events, ctx["weekdays"], ctx["today"], ctx["tuning"],
+                       memory_kind(item["genre"], item.get("qtype", "")))
         mat = self.materials.get(item.get("material_id") or "")
         view = {k: v for k, v in item.items() if k != "events"}
         view["sched"] = sched

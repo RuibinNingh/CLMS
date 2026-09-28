@@ -44,6 +44,18 @@ QTYPE_MINUTES = {"选择题": 1.5, "翻译题": 3.0, "断句题": 1.5, "实词�
                  "虚词题": 1.0, "文化常识题": 1.0, "词语理解题": 2.0}
 MATERIAL_MINUTES = {"modern": 5.0, "classical": 3.0, "poetry": 1.5, "dictation": 0.0}
 
+# 记忆类型：决定用哪条记忆曲线（见 AI/algorithm.md「两种记忆类型」）。
+# 记忆型（recall）靠背：默写、文言实词 / 虚词 / 文化常识——会遗忘，按间隔重复反复考。
+# 理解型（skill）靠方法：阅读主观题、鉴赏、翻译、概括……做对一次就很少再错，重做同一题测的多半是「记不记得答案」。
+RECALL_QTYPES = {"实词解释题", "虚词题", "文化常识题"}
+MEMORY_KINDS = {"recall": "记忆型", "skill": "理解型"}
+
+
+def memory_kind(genre: str, qtype: str = "") -> str:
+    if genre == "dictation" or (qtype or "") in RECALL_QTYPES:
+        return "recall"
+    return "skill"
+
 
 def normalize_genre(value, default="modern") -> str:
     text = str(value or "").strip()

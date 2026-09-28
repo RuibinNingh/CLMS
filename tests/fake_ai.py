@@ -9,6 +9,11 @@
   识图时两个板块以上就 delegate 给子代理（每个子代理 material_set + items_add 或 dictation_add），单个板块自己
   group_add + items_add；对话里「第 N 题 + 答案 / 题型 / 留白」→ item_update，「入库」→ draft_commit，
   「停用 Q-…」→ library_suspend；复习批改 → session_get + review_grade。
+- 复习助手请求（第一条消息含「## 复习助手」，不带 tools）：提问 → 讲思路；打分 → 有作答时给
+  【建议】{"grade": 2, "note": …}，没有作答时请学生发作答；写反馈 → 【建议】{"note": …}。stream=true 时流式。
+
+  请求带 stream=true 时按 SSE 流式回复：先吐 reasoning_content（思考），再吐一句说明，最后把工具参数分片吐出；
+  FAKE_AI_STREAM_DELAY=秒（默认 0.004）控制每片间隔。
 
 用法：python3 tests/fake_ai.py 18999   然后在设置里填 API 地址 http://127.0.0.1:18999/v1、任意 Key、任意模型名。
 环境变量 FAKE_AI_DELAY=秒 可模拟慢模型。
@@ -222,6 +227,59 @@ def normalize(group) -> str:
     return "dictation" if group["genre"] == "名句默写" else "reading"
 
 
+SAY = {"delegate": "这份卷子有几个大题，我分给子代理并行录入。", "draft_view": "都录完了，我检查一下整份草稿。",
+       "material_set": "先把原文逐字转录下来。", "items_add": "再按题号添加小题。", "item_update": "按你说的改这道题。",
+       "dictation_add": "把名句默写按空录进去。", "session_get": "先看看这次复习的题目和参考答案。",
+       "review_grade": "对照照片逐题评分，写上反馈。", "group_add": "只有一个大题，我直接录。",
+       "draft_commit": "好的，入库。", "library_suspend": "停用这道题。"}
+
+
+def _chunks(text, size):
+    return [text[i:i + size] for i in range(0, len(text), size)] or [""]
+
+
+def stream_events(message):
+    calls = message.get("tool_calls") or []
+    names = [c["function"]["name"] for c in calls]
+    thinking = (f"用户这一步需要我调用 {'、'.join(names)}。" if names else "工具都执行完了，整理一下结论告诉用户。") + \
+        "先确认上下文里的信息，再决定参数。"
+    content = message.get("content") or ("".join(SAY.get(n, "") for n in dict.fromkeys(names)) if names else "")
+    for piece in _chunks(thinking, 12):
+        yield {"reasoning_content": piece}
+    for piece in _chunks(content, 8):
+        if piece:
+            yield {"content": piece}
+    for n, call in enumerate(calls):
+        yield {"tool_calls": [{"index": n, "id": call["id"], "type": "function",
+                               "function": {"name": call["function"]["name"], "arguments": ""}}]}
+        for piece in _chunks(call["function"]["arguments"], 60):
+            yield {"tool_calls": [{"index": n, "function": {"arguments": piece}}]}
+
+
+def review_reply(messages: list) -> dict:
+    """复习助手的确定性回答（见模块说明）。"""
+    texts, images = [], 0
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        for part in m.get("content") if isinstance(m.get("content"), list) else [{"type": "text", "text": m.get("content")}]:
+            if part.get("type") == "image_url":
+                images += 1
+            elif part.get("type") == "text":
+                texts.append(part.get("text") or "")
+    last = texts[-1] if texts else ""
+    said = [t.split("## 学生说\n", 1)[-1].split("\n\n## 这次的任务", 1)[0] for t in texts]
+    answered = images or any(re.search(r"作答[:：]|我答了|我写的", t) for t in said)
+    if "## 这次的任务：打分" in last:
+        if not answered:
+            return {"content": "我还没看到你的作答：把你写的答案打出来或拍照发给我，我再对照采分点打分。"}
+        return {"content": "对照参考答案：\n1. **线索**这一点答到了。\n2. **象征**没有答出。\n3. **抒情**只说了一半。\n\n整体算「基本」。\n"
+                           '【建议】{"grade": 2, "note": "漏了象征义，抒情没点明怀念与失落"}'}
+    if "## 这次的任务：写复习反馈" in last:
+        return {"content": "按你这次的评分写了一条：\n" + '【建议】{"note": "作用题按结构、内容、主旨三层答全"}'}
+    return {"content": "这道题考的是意象在文中的**作用**，一般从三层想：\n- 结构上：是不是线索\n- 内容上：象征什么\n- 主旨上：寄托什么情感\n\n先对照原文找到每次写灯的地方。"}
+
+
 class FakeAI(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
@@ -229,6 +287,38 @@ class FakeAI(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
         time.sleep(float(os.environ.get("FAKE_AI_DELAY", "0")))
+        if body.get("stream_options") and os.environ.get("FAKE_AI_NO_STREAM_OPTIONS"):
+            payload = b'{"error": {"message": "Unrecognized request argument: stream_options"}}'
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if body.get("tools") and body.get("stream"):
+            message = agent_reply(body["messages"], body["tools"])
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            delay = float(os.environ.get("FAKE_AI_STREAM_DELAY", "0.004"))
+            try:
+                for delta in stream_events(message):
+                    chunk = {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+                    self.wfile.write(f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode())
+                    self.wfile.flush()
+                    time.sleep(delay)
+                end = {"choices": [{"index": 0, "delta": {},
+                                    "finish_reason": "tool_calls" if message.get("tool_calls") else "stop"}]}
+                self.wfile.write(f"data: {json.dumps(end)}\n\n".encode())
+                if (body.get("stream_options") or {}).get("include_usage"):
+                    out = len(json.dumps(message, ensure_ascii=False)) // 3
+                    usage = {"choices": [], "usage": {"prompt_tokens": 900 + 40 * len(body["messages"]),
+                                                      "completion_tokens": out, "total_tokens": 0}}
+                    self.wfile.write(f"data: {json.dumps(usage)}\n\n".encode())
+                self.wfile.write(b"data: [DONE]\n\n")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         if body.get("tools"):
             message = agent_reply(body["messages"], body["tools"])
             message.setdefault("content", "")
@@ -242,6 +332,32 @@ class FakeAI(http.server.BaseHTTPRequestHandler):
             self.wfile.write(payload)
             return
         text = next((p["text"] for p in body["messages"][0]["content"] if p.get("type") == "text"), "")
+        if "## 复习助手" in text:
+            message = review_reply(body["messages"])
+            if body.get("stream"):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                delay = float(os.environ.get("FAKE_AI_STREAM_DELAY", "0.004"))
+                try:
+                    for delta in stream_events(dict(message, tool_calls=[])):
+                        chunk = {"choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
+                        self.wfile.write(f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode())
+                        self.wfile.flush()
+                        time.sleep(delay)
+                    end = {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+                    self.wfile.write(f"data: {json.dumps(end)}\n\ndata: [DONE]\n\n".encode())
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+                return
+            payload = json.dumps({"choices": [{"message": dict(message, role="assistant"), "finish_reason": "stop"}]},
+                                 ensure_ascii=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if "## 用户这次说" in text:
             out = revise(text)
         elif "## 板块 genre" in text:

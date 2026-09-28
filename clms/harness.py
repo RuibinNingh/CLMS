@@ -3,8 +3,10 @@
 一次 run = 若干轮（turn）：把上下文发给模型 → 模型回复文字和 / 或工具调用 → 逐个执行工具 → 工具结果回到上下文
 → 下一轮；模型不再调用工具时结束。和 Pi 一样：
 
-- 事件流：agent_start / turn_start / message_end / tool_start / tool_update / tool_end / turn_end / steer / agent_end，
-  由 on_event 回调接走（drafts.py 把它们落到草稿的对话记录里，前端轮询显示）。
+- 事件流：agent_start / message_start / delta（思考、正文逐字）/ toolcall_delta（工具参数逐字）/ message_end /
+  tool_start / tool_update / tool_end / sub（子代理的事件，原样包一层）/ turn_end / steer / agent_end，
+  由 on_event 回调接走（drafts.py 把它们变成对话里的块，经 live.py + SSE 实时推给前端）。
+- 思考：模型回复里的 thinking 只展示，不回传给模型。
 - 插话（steering）：run 进行中用户又发了话，下一次请求模型之前插进上下文；模型本来要停时也会再看一遍队列。
 - 停止（abort）：每次请求模型前、每个工具执行前检查；停止后不再写任何东西。
 - 输出被截断（finish_reason=length）时，这一轮的工具调用一律不执行，改回一条错误结果，让模型重发完整参数。
@@ -64,13 +66,17 @@ class Tool:
 
 
 class ToolContext:
-    """工具执行时拿到的上下文：update(details) 推送进度（Pi 的 tool_execution_update）。"""
+    """工具执行时拿到的上下文：update(details) 推送进度（Pi 的 tool_execution_update）；
+    sub_events(task) 给子代理用的事件出口（把子代理的整条事件流挂在这次工具调用下面）。"""
 
     def __init__(self, agent, call):
         self.agent, self.call = agent, call
 
     def update(self, details: dict):
         self.agent.emit({"type": "tool_update", "id": self.call["id"], "name": self.call["name"], "details": details})
+
+    def sub_events(self, task):
+        return lambda event: self.agent.emit({"type": "sub", "parent": self.call["id"], "task": task, "event": event})
 
     @property
     def aborted(self) -> bool:
@@ -109,7 +115,8 @@ def _schema_check(schema: dict, args: dict) -> str:
 
 
 class Agent:
-    """llm(messages_openai, tool_schemas) → {content, tool_calls:[{id,name,arguments}], finish_reason}。"""
+    """llm(messages_openai, tool_schemas, on_delta) → {content, thinking, tool_calls:[{id,name,arguments}], finish_reason}。
+    on_delta(kind, data)：kind = thinking / text / toolcall（data = {index, name, delta}）。"""
 
     def __init__(self, *, llm, tools, system_prompt, render_images, run_id, max_turns=30,
                  on_event=None, steering=None, abort=None, name="main"):
@@ -224,14 +231,18 @@ class Agent:
                 break
             self.turns += 1
             self.emit({"type": "turn_start", "turn": self.turns})
+            self.emit({"type": "message_start", "turn": self.turns})
             started = time.time()
-            reply = self.llm(self.to_llm(messages), schemas)
+            reply = self.llm(self.to_llm(messages), schemas, self._on_delta)
             self._check_abort()
             calls = [dict(c) for c in reply.get("tool_calls") or []]
             message = {"role": "assistant", "content": (reply.get("content") or "").strip(), "tool_calls": calls}
+            if reply.get("thinking"):
+                message["thinking"] = reply["thinking"]
             messages.append(message)
             self.emit({"type": "message_end", "message": message, "seconds": round(time.time() - started, 1),
-                       "finish_reason": reply.get("finish_reason", "")})
+                       "finish_reason": reply.get("finish_reason", ""), "usage": reply.get("usage") or {},
+                       "timing": reply.get("timing") or {}})
             if not calls:
                 self.emit({"type": "turn_end", "turn": self.turns})
                 if reply.get("finish_reason") == "length":
@@ -251,8 +262,8 @@ class Agent:
                     preview = json.loads(call["arguments"] or "{}")
                 except ValueError:
                     preview = {}
-                self.emit({"type": "tool_start", "id": call["id"], "name": call["name"],
-                           "label": tool.label(preview) if tool else call["name"]})
+                self.emit({"type": "tool_start", "id": call["id"], "name": call["name"], "index": calls.index(call),
+                           "label": tool.label(preview) if tool else call["name"], "args": preview})
                 result = self._run_tool(call, truncated)
                 results.append(result)
                 messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"],
@@ -260,7 +271,7 @@ class Agent:
                 images += result.images
                 self.emit({"type": "tool_end", "id": call["id"], "name": call["name"], "error": result.is_error,
                            "summary": result.details.get("summary") or result.content[:160],
-                           "details": result.details})
+                           "details": result.details, "content": result.content})
             if images:
                 messages.append({"role": "user", "content": "（这是 view_pages 请求的页面。）", "images": images,
                                  "run": self.run_id, "synthetic": True})
@@ -270,6 +281,15 @@ class Agent:
             self._steer(messages)
         self.emit({"type": "agent_end", "reason": stop_reason})
         return messages[start:]
+
+    def _on_delta(self, kind, data):
+        if self.aborted():
+            raise Aborted()
+        if kind == "toolcall":
+            self.emit({"type": "toolcall_delta", "index": data.get("index", 0), "name": data.get("name", ""),
+                       "delta": data.get("delta", "")})
+        else:
+            self.emit({"type": "delta", "kind": kind, "text": data})
 
     def _steer(self, messages: list) -> list:
         queued = (self.steering() if self.steering else None) or []

@@ -1,0 +1,59 @@
+/* 复习助手：纸面右边的一张批注纸。学生写的话和作答用蓝笔（--pen），AI 的回答用正文墨色；
+   建议评分是一张可以一键采用的便签（墨蓝底），红笔仍然只留给参考答案。 */
+.ai {
+  position: sticky; top: var(--sp-4); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto;
+  height: calc(100vh - 150px); min-height: 420px; border: 1px solid var(--border-1); border-radius: var(--r-lg);
+  background: var(--surface-1); overflow: hidden;
+}
+.ai > .empty { grid-row: 1 / -1; align-self: center; }
+.ai__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border-1); }
+.ai__title { display: inline-flex; align-items: center; gap: var(--sp-1_5); font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--accent); }
+.ai__title svg { width: 16px; height: 16px; }
+.ai__target { display: inline-flex; align-items: center; gap: var(--sp-1_5); min-width: 0; font-size: var(--text-xs); color: var(--fg-2); }
+.ai__close { margin-left: auto; display: none; }
+
+.ai__log { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-4); font-size: var(--text-sm); }
+.ai__empty { display: grid; gap: var(--sp-2); color: var(--fg-3); font-size: var(--text-xs); line-height: var(--leading-ui); }
+.ai__msg { display: grid; gap: var(--sp-2); min-width: 0; }
+.ai__msg--user {
+  align-self: flex-end; max-width: 88%; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--surface-0);
+  color: var(--pen); font-family: var(--font-read); font-size: var(--text-md); line-height: var(--leading-ui); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.ai__msg--bot { line-height: var(--leading-ui); color: var(--fg-1); }
+.ai__wait, .ai__err, .ai__note { font-size: var(--text-xs); }
+.ai__note { color: var(--fg-3); }
+.ai__thumbs { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.ai__thumbs img { display: block; width: 64px; height: 64px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border-1); }
+
+.ai__sug { display: grid; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-md); background: var(--accent-soft); border: 1px solid var(--border-1); }
+.ai__sugbody { display: grid; gap: var(--sp-1); margin: 0; }
+.ai__sugbody div { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); align-items: baseline; gap: var(--sp-2); }
+.ai__sugbody dt { font-size: var(--text-2xs); color: var(--fg-3); }
+.ai__sugbody dd { margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.ai__sugacts { display: flex; flex-wrap: wrap; gap: var(--sp-1_5); }
+.ai__adopted { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-xs); color: var(--success-fg); }
+.ai__adopted svg { width: 14px; height: 14px; }
+
+.ai__quick { display: flex; flex-wrap: wrap; gap: var(--sp-1); padding: var(--sp-2) var(--sp-4) 0; border-top: 1px solid var(--border-1); }
+.ai__quick svg { width: 12px; height: 12px; }
+.ai__quick .chip:disabled { opacity: .5; cursor: not-allowed; }
+.ai__composer { display: grid; gap: var(--sp-1_5); padding: var(--sp-2) var(--sp-4) var(--sp-3); }
+.ai__input {
+  width: 100%; resize: none; min-height: calc(var(--ctl-md) * 2); max-height: 160px; padding: var(--sp-2);
+  border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface-1);
+  color: var(--pen); font-family: var(--font-read); font-size: var(--text-md); line-height: var(--leading-ui);
+}
+.ai__input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.ai__input::placeholder { color: var(--fg-3); font-family: var(--font-sans); font-size: var(--text-xs); }
+.ai__bar { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); }
+.ai__pic { cursor: pointer; }
+.ai__att { position: relative; }
+.ai__att .btn { position: absolute; top: calc(-1 * var(--sp-1)); right: calc(-1 * var(--sp-1)); border-radius: 50%; background: var(--surface-1); }
+@media (max-width:1160px){
+  .ai {
+    position: fixed; z-index: var(--z-drawer); top: auto; right: var(--sp-3); bottom: var(--sp-3);
+    width: min(440px, calc(100vw - 24px)); height: min(72vh, 640px); box-shadow: var(--elev-3); display: none;
+  }
+  .ai.is-open { display: grid; }
+  .ai__close { display: inline-flex; }
+}

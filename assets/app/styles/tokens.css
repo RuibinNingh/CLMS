@@ -96,9 +96,13 @@
   --text-read:16px;                        /* 原文、题干 */
   --leading-tight:1.2; --leading-ui:1.5; --leading-read:1.9;
   --weight-regular:400; --weight-medium:500; --weight-semibold:600; --weight-bold:700;
-  --font-sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
-  --font-read:'Noto Serif SC','Noto Serif CJK SC','Source Han Serif SC','Songti SC','STSong','SimSun',serif;
-  --font-mono:ui-monospace,'SFMono-Regular',Menlo,monospace;
+  /* 界面字体：西文与数字用各平台的界面字体（Segoe UI / SF），汉字用苹方、鸿蒙黑体、微软雅黑 UI、思源黑体；
+     没有随项目附带字体文件（中文字体体积太大），按平台挑系统里最好的一款。 */
+  --font-sans:'Inter','Segoe UI Variable Text','Segoe UI',-apple-system,BlinkMacSystemFont,'PingFang SC','HarmonyOS Sans SC','MiSans',
+    'Microsoft YaHei UI','Microsoft YaHei','Noto Sans SC','Noto Sans CJK SC','Source Han Sans SC',system-ui,sans-serif;
+  --font-read:'Source Han Serif SC','Noto Serif SC','Noto Serif CJK SC','Songti SC','STSong','SimSun',serif;
+  --font-mono:'JetBrains Mono','Cascadia Code','Cascadia Mono','SF Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',
+    'Noto Sans Mono CJK SC',ui-monospace,monospace;
 
   --sp-0_5:2px; --sp-1:4px; --sp-1_5:6px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
   --sp-5:20px;  --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px;
@@ -106,19 +110,20 @@
 
   --ctl-sm:28px; --ctl-md:34px; --ctl-lg:42px;
   --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
-  --dur-1:120ms; --dur-2:180ms; --dur-3:260ms; --dur-flash:1800ms;
+  --dur-1:120ms; --dur-2:180ms; --dur-3:260ms; --dur-4:420ms; --dur-flash:1800ms;
   --ease-out:cubic-bezier(.2,.8,.2,1); --ease-in-out:cubic-bezier(.4,0,.2,1);
   --z-sticky:10; --z-sidebar:20; --z-dropdown:100; --z-drawer:200;
   --z-modal:300; --z-toast:400; --z-tooltip:500;
   --ring:0 0 0 3px var(--accent-soft);     /* 输入框聚焦光圈 */
   --ring-line:0 0 0 1px var(--accent);      /* 选中卡片的描边 */
   --indent:2em;                            /* 段首缩进（原文、题干） */
-  --chat-width:380px;
+  --chat-width:440px; --hist-width:272px; --launch-width:720px; --rail-width:64px;
+  --scroll-thumb:var(--border-2); --scroll-thumb-hover:var(--fg-3);
   --sidebar-width:196px;
 }
 @media (max-width:760px){
   :root{ --ctl-sm:40px; --ctl-md:40px; --ctl-lg:44px; --text-read:15px; }
 }
 @media (prefers-reduced-motion:reduce){
-  :root{ --dur-1:0ms; --dur-2:0ms; --dur-3:0ms; --dur-flash:0ms; }
+  :root{ --dur-1:0ms; --dur-2:0ms; --dur-3:0ms; --dur-4:0ms; --dur-flash:0ms; }
 }

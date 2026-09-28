@@ -6,7 +6,7 @@
 <title>CLMS · 语文错题本</title>
 <link rel="stylesheet" href="/assets/app/styles/tokens.css">
 <link rel="stylesheet" href="/assets/app/styles/index.css">
-<script>try{var t=localStorage.getItem('clms-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script>try{var t=localStorage.getItem('clms-theme');if(t)document.documentElement.dataset.theme=t;var n=localStorage.getItem('clms-nav');if(n)document.documentElement.dataset.nav=n;}catch(e){}</script>
 </head>
 <body>
 <div class="app">
@@ -18,7 +18,8 @@
     <nav class="nav" id="nav" aria-label="页面"></nav>
     <div class="sidebar__foot">
       <button class="btn btn--ghost btn--sm theme-toggle" data-action="app.theme" id="theme-toggle">切换深色</button>
-      <span id="app-version"></span>
+      <div class="sidebar__row"><span id="app-version"></span>
+        <button class="btn btn--ghost btn--icon btn--sm nav-toggle" data-action="app.nav" id="nav-toggle" aria-label="收起导航" title="收起导航"></button></div>
     </div>
   </aside>
   <main class="main" id="main">
@@ -30,6 +31,6 @@
     <section class="panel" id="panel-settings" aria-label="设置"></section>
   </main>
 </div>
-<script type="module" src="/assets/app/main.js?v=0.2.0"></script>
+<script type="module" src="/assets/app/main.js?v=0.5.0"></script>
 </body>
 </html>

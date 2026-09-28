@@ -1,7 +1,6 @@
 /* 样式总入口：层级从低到高 base < ui < shell < domain < features < utilities。
    tokens.css 只定义自定义属性，单独 <link>；新样式一律进层，不靠提高选择器权重互压。 */
 @layer base, ui, shell, domain, features, utilities;
-@import url("../../vendor/fonts/fonts.css") layer(base);
 @import url("base.css") layer(base);
 @import url("ui.css") layer(ui);
 @import url("shell.css") layer(shell);
@@ -9,7 +8,12 @@
 @import url("../features/dashboard/dashboard.css") layer(features);
 @import url("../features/entry/entry.css") layer(features);
 @import url("../features/entry/canvas.css") layer(features);
-@import url("../features/entry/run.css") layer(features);
+@import url("../features/entry/timeline.css") layer(features);
+@import url("../features/entry/history.css") layer(features);
+@import url("../features/entry/launch.css") layer(features);
 @import url("../features/library/library.css") layer(features);
+@import url("../features/library/browse.css") layer(features);
 @import url("../features/review/review.css") layer(features);
+@import url("../features/review/planner.css") layer(features);
+@import url("../features/review/assistant.css") layer(features);
 @import url("../features/settings/settings.css") layer(features);

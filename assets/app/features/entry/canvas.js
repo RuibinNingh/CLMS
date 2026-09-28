@@ -14,6 +14,10 @@ function genreSelect(group, ro) {
   </select>`;
 }
 
+/** 标题 / 作者 / 出处：单行语义、但能自动换行的文本框（长标题、长出处不再被截断；回车不换行）。 */
+const line = (path, value, label, ro) => html`<textarea class="ta mat__ta" rows="1" data-path="${path}" data-input="entry.field"
+  data-autosize data-oneline placeholder="${label}" aria-label="${label}" ${ro ? html`readonly` : ''}>${value || ''}</textarea>`;
+
 function material(group, o) {
   const m = group.material;
   const base = `${group.gid}|`;
@@ -22,10 +26,12 @@ function material(group, o) {
   const fl = field => (isFlash(o.flash, group.gid, '', field) ? html`data-flash` : '');
   return html`
   <div class="mat">
-    <div class="mat__line">
-      <span class="mat__title" ${fl('title')}><input value="${m.title}" data-path="${base}|title" data-input="entry.field" placeholder="标题" aria-label="标题" ${o.ro ? html`readonly` : ''}></span>
-      <span class="mat__by" ${fl('author')}><input value="${m.author}" data-path="${base}|author" data-input="entry.field" placeholder="作者" aria-label="作者" ${o.ro ? html`readonly` : ''}></span>
-      <span class="mat__by" ${fl('source')}><input value="${m.source}" data-path="${base}|source" data-input="entry.field" placeholder="出处" aria-label="出处" ${o.ro ? html`readonly` : ''}></span>
+    <div class="mat__head">
+      <span class="mat__title" ${fl('title')}>${line(`${base}|title`, m.title, '标题', o.ro)}</span>
+      <div class="mat__byline">
+        <span class="mat__by mat__by--author" ${fl('author')}>${line(`${base}|author`, m.author, '作者', o.ro)}</span>
+        <span class="mat__by mat__by--source" ${fl('source')}>${line(`${base}|source`, m.source, '出处', o.ro)}</span>
+      </div>
     </div>
     <div class="mat__text ${open ? 'is-open' : ''}" ${fl('text')}>
       ${open ? html`<textarea class="ta ta--read ta--passage" data-path="${base}|text" data-input="entry.field" data-autosize
@@ -70,9 +76,10 @@ export function renderCanvas(groups, o) {
   return html`<div class="canvas">${each(groups, g => g.gid, g => groupCard(g, o))}${o.ro ? '' : addGroup()}</div>`;
 }
 
-export function renderImages(images, zoom) {
-  if (!images?.length) return html`<div class="empty">这份草稿没有原图（手动录入）</div>`;
+export function renderImages(pages, zoom) {
+  if (!pages?.length) return html`<div class="empty">这份草稿没有原图（手动录入）</div>`;
   return html`<div class="shots ${zoom ? 'is-zoom' : ''}">
-    ${each(images, i => i, i => html`<button class="shot" data-action="entry.zoom" title="${zoom ? '缩小' : '放大'}"><img src="/api/image?id=${i}" alt="原图" loading="lazy"></button>`)}
+    ${each(pages, p => p.image, (p, n) => html`<button class="shot" data-action="entry.zoom" data-rotate="${p.rotate || 0}" title="${zoom ? '缩小' : '放大'}">
+      <span class="shot__no">第 ${n + 1} 页${p.note ? ` · ${p.note}` : ''}</span><img src="/api/image?id=${p.image}" alt="原图" loading="lazy"></button>`)}
   </div>`;
 }

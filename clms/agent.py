@@ -42,6 +42,7 @@ RULES = """## 录入规则
 MAIN_PROMPT = """你是 CLMS（高中语文错题本）的录入助手，运行在一个工具调用 harness 里：你只能通过调用工具来读写草稿、题库和复习记录；用户在界面右侧实时看到草稿的变化，左侧看到你的每一步工具调用。今天是 %s。
 
 ## 工作方式
+- 用户能实时看到你的每一步。每次调用工具之前，先用一句话说明接下来要做什么、为什么（例如「先看全卷有几个大题」「第 7 题答案图里没有，我按 6 分补写」），不要默默连调一串工具。
 - 先用工具查清现状再动手（draft_view、library_get、session_get）；只改用户要求改的地方，其余不动。
 - 逐个板块、逐道题地写：材料用 material_set，小题用 items_add（一次加几道即可，别把整份卷子塞进一次调用），改题用 item_update / dictation_update。
 - 删除类操作（删题、作废记录）只在用户明确要求时做；这些操作都能撤销。
@@ -71,7 +72,8 @@ SUB_PROMPT = """你是 CLMS 录入流程里的子代理，只负责一个大题�
 
 
 class ImageRenderer:
-    """图片引用 → data URL，按 (图片, 宽度) 缓存：同一次 run 里每轮都要重发图片，不能每轮都重新缩图编码。"""
+    """图片引用 → data URL，按 (图片, 宽度, 旋转) 缓存：同一次 run 里每轮都要重发图片，不能每轮都重新缩图编码。
+    pages 是准备阶段确认过的页：[{image, rotate, note}]；引用 {"page": n} 取第 n 页（带旋转），{"image": id} 取附图。"""
 
     def __init__(self, vault, pages, image_path):
         self.vault, self.pages, self.image_path = vault, list(pages), image_path
@@ -80,18 +82,24 @@ class ImageRenderer:
     def urls(self, refs, width=ai_assist.MAX_WIDTH) -> list:
         out = []
         for ref in refs or []:
-            image_id = ref.get("image") or (self.pages[ref["page"] - 1] if 0 < ref.get("page", 0) <= len(self.pages) else "")
+            page = self.pages[ref["page"] - 1] if 0 < ref.get("page", 0) <= len(self.pages) else None
+            image_id = ref.get("image") or (page or {}).get("image") or ""
             if not image_id:
                 continue
-            key = (image_id, ref.get("width") or width)
+            key = (image_id, ref.get("width") or width, int((page or {}).get("rotate") or 0))
             with self._lock:
                 cached = self._cache.get(key)
             if cached is None:
-                cached = ai_assist.image_data_urls(self.image_path(self.vault, image_id), key[1])
+                cached = ai_assist.image_data_urls(self.image_path(self.vault, image_id), key[1], key[2])
                 with self._lock:
                     self._cache[key] = cached
             out += cached
         return out
+
+
+def pages_note(pages) -> str:
+    notes = [f"第 {n} 页：{p['note']}" for n, p in enumerate(pages, 1) if (p.get("note") or "").strip()]
+    return ("\n用户对各页的说明：" + "；".join(notes)) if notes else ""
 
 
 def _pages_text(pages) -> str:
@@ -101,7 +109,7 @@ def _pages_text(pages) -> str:
     return "、".join(map(str, pages))
 
 
-def delegate_tool(vault, ws: Workspace, renderer: ImageRenderer, llm, parent_run: str) -> Tool:
+def delegate_tool(vault, ws: Workspace, renderer: ImageRenderer, llm, parent_run: str, page_info=None) -> Tool:
     cfg = load_config(vault)
     workers = max(1, min(6, int(cfg.get("agent_subagents") or 3)))
     sub_turns = max(4, int(cfg.get("agent_sub_turns") or 16))
@@ -136,7 +144,8 @@ def delegate_tool(vault, ws: Workspace, renderer: ImageRenderer, llm, parent_run
             with lock:
                 ctx.update({"tasks": [{k: v for k, v in t.items() if k != "instructions"} for t in tasks]})
 
-        def on_event(task, event):
+        def on_event(task, forward, event):
+            forward(event)
             if event["type"] == "tool_start":
                 task["last"] = event.get("label", "")
             elif event["type"] == "tool_end":
@@ -154,13 +163,15 @@ def delegate_tool(vault, ws: Workspace, renderer: ImageRenderer, llm, parent_run
             task["status"] = "running"
             push()
             name = GENRE_BY_CODE[task["genre"]]["name"] + (f"《{task['title']}》" if task["title"] else "")
+            notes = pages_note([p if n + 1 in task["pages"] else {} for n, p in enumerate(page_info or [])])
             prompt = SUB_PROMPT % (name, task["gid"], _pages_text(task["pages"]), len(ws.pages),
                                    ("\n## 主代理的说明\n" + task["instructions"] + "\n") if task["instructions"] else "",
-                                   RULES % qtype_table(vault))
+                                   RULES % qtype_table(vault) + notes)
+            forward = ctx.sub_events(task["n"])
             sub = Agent(llm=llm, tools=draft_tools(ws, scope=task["gid"], structure=False), system_prompt=prompt,
                         render_images=lambda refs: renderer.urls(refs), run_id=f"{parent_run}.{task['n']}",
-                        max_turns=sub_turns, on_event=lambda ev: on_event(task, ev), abort=ctx.agent.abort_event,
-                        name=f"sub{task['n']}")
+                        max_turns=sub_turns, on_event=lambda ev: on_event(task, forward, ev),
+                        abort=ctx.agent.abort_event, name=f"sub{task['n']}")
             try:
                 new = sub.run([], [{"role": "user", "content": f"请录入{name}（第 {_pages_text(task['pages'])} 页）。",
                                     "images": [{"page": p} for p in task["pages"]]}])
@@ -213,7 +224,7 @@ def run(vault: str, host, job: dict) -> dict:
     """跑一次任务。host 需要提供：pages、groups、committed、transcript、run_id、flush(groups)、event(ev)、
     steering()、abort（threading.Event）、commit(groups)、image_path(vault, id)。"""
     kind = {"revise": "chat"}.get(job["type"], job["type"])      # 对话任务沿用旧名 revise（重试兼容）
-    llm = lambda messages, tools: ai_assist.chat(vault, messages, tools)  # noqa: E731
+    llm = lambda messages, tools, on_delta: ai_assist.chat(vault, messages, tools, on_delta)  # noqa: E731
     ws = Workspace(vault, host.groups, host.pages, on_change=host.flush, readonly=host.committed)
     renderer = ImageRenderer(vault, host.pages, host.image_path)
     width = ai_assist.MAX_WIDTH if len(host.pages) <= 2 else SURVEY_WIDTH
@@ -228,7 +239,7 @@ def run(vault: str, host, job: dict) -> dict:
         else:
             tools += draft_tools(ws)
             if host.pages:
-                tools.append(delegate_tool(vault, ws, renderer, llm, host.run_id))
+                tools.append(delegate_tool(vault, ws, renderer, llm, host.run_id, host.pages))
                 delegate = True
         if kind == "chat":
             if not host.committed:
@@ -236,8 +247,8 @@ def run(vault: str, host, job: dict) -> dict:
             tools += library_tools(vault) + record_tools(vault) + review_tools(vault)
     if kind == "extract":
         hint = (job.get("hint") or "").strip()
-        text = (f"这是一份语文试卷 / 练习的照片，共 {len(host.pages)} 页（按顺序为第 1–{len(host.pages)} 页）。请识别并录入草稿。"
-                + (f"\n用户补充说明：{hint}" if hint else "")
+        text = (f"这是一份语文试卷 / 练习的照片，共 {len(host.pages)} 页（用户已确认顺序，第 1–{len(host.pages)} 页）。请识别并录入草稿。"
+                + (f"\n用户补充说明：{hint}" if hint else "") + pages_note(host.pages)
                 + ("\n草稿里已经有上次录了一半的内容，先 draft_view 检查，补全缺的，不要重复添加。" if ws.groups else ""))
         prompts = [{"role": "user", "content": text, "images": pages}]
     elif kind == "review":
