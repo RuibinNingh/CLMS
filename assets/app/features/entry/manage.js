@@ -4,16 +4,28 @@
  * 由 index.js 注入状态与工具函数，合并进 defineActions('entry', …)。
  */
 export function manageActions(c) {
-  const { s, render, refreshList, open, fresh, post, toast, confirmDialog, readImages, applyDraft, poll } = c;
+  const { s, render, refreshList, open, fresh, post, toast, confirmDialog, applyDraft, poll } = c;
   let searchTimer = 0;
+  let saving = Promise.resolve();
+  let saveSeq = 0;
 
-  async function savePages(pages, extra = {}) {
+  /**
+   * 改页序 / 旋转 / 删页 / 每页说明：先改本地、立即重画，再保存。连续几次保存排队按顺序发（服务端多线程，并发发出去
+   * 处理顺序不定），只有最后一次的回复才覆盖界面——否则较早那次（比如拖动换序）的回复晚到，会把刚填的说明冲掉，
+   * 下一次保存再把丢了说明的页面存回去。
+   */
+  function savePages(pages, extra = {}) {
+    if (s.imports.length) return saving;
     s.draft.pages = pages;
     render();
-    const res = await post('/api/draft/pages', { id: s.draft.id, pages, ...extra }, { timeout: 120000 });
-    if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
-    applyDraft(res.data);
-    render();
+    const mine = ++saveSeq;
+    const id = s.draft.id;
+    saving = saving.then(async () => {
+      const res = await post('/api/draft/pages', { id, pages, ...extra }, { timeout: 120000 });
+      if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
+      if (mine === saveSeq && s.draft?.id === id) { applyDraft(res.data); render(); }
+    });
+    return saving;
   }
   const pages = () => (s.draft?.pages || []).map(p => ({ ...p }));
 
@@ -76,14 +88,13 @@ export function manageActions(c) {
     pageRotate: ({ arg }) => { const list = pages(); const p = list[Number(arg)]; p.rotate = ((p.rotate || 0) + 90) % 360; savePages(list); },
     pageRemove: ({ arg }) => { const list = pages(); list.splice(Number(arg), 1); savePages(list); },
     pageNote: ({ el, arg }) => { const list = pages(); list[Number(arg)].note = el.value.trim(); savePages(list); },
-    async pageAdd({ el }) { const add = await readImages(el.files); el.value = ''; if (add.length) savePages(pages(), { add }); },
     stageHint({ el }) {
       if (s.starting || s.draft?.status !== 'staged' || el.value === (s.draft.hint || '')) return;
       const draft = s.draft;
       s.hintSave = post('/api/draft/pages', { id: draft.id, hint: el.value }).then(res => { if (res.ok) draft.hint = res.data.hint; });
     },
     async start({ arg }) {
-      if (s.starting) return;
+      if (s.starting || s.imports.length) return;
       s.starting = true; render();
       await s.hintSave;                                  // 失焦时的保存还在路上：等它落地，免得和「开始」赛跑
       const hint = s.heroText.trim();

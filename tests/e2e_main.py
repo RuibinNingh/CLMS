@@ -7,13 +7,14 @@
 → 时间线（思考块、工具调用展开参数 / 结果、delegate 子代理卡片展开子代理自己的时间线）
 → 对话修订（流式：思考 / 参数逐字出现；改动清单、画布闪一次、回到修改前）→ 录入记录（重命名、回收站、恢复）→ 手工改留白 → 入库 → 第二份含标点不同的重复默写（去重、记又错一次）
 → 题库（复习记录补记 / 改评 / 撤销 / 恢复，删除后恢复；分面筛选；按篇；批量加入复习）
-→ 复习页（自选题 + 推荐、移除 / 放回、从题库挑题、按时间预算）→ 评分 → 写反馈 → 打印
-→ 复习助手（提问、打分并采用、写反馈先暂存评分时写入）→ 复习记录分页
+→ 复习页（自选题 + 推荐、移除 / 放回、从题库挑题、按时间预算）→ 评分（一次一道、答题卡、键盘换题 / 自评）→ 写反馈 → 打印
+→ 复习助手（思考与查阅可见、选中题干引用、打分并采用、写反馈先暂存评分时写入、改评分保留反馈）→ 复习记录分页
 → 新对话里让 AI 停用一道题 → 概览 → 设置里导出脱敏源码。
 需要 playwright（自带 Chromium）。测试图片用 Pillow 现画，不依赖外部文件。
 """
 
 import argparse
+import json
 import os
 os.environ.setdefault("FAKE_AI_STREAM_DELAY", "0.02")   # 让流式看得见
 import shutil
@@ -74,7 +75,7 @@ def run(shots=None):
             pg.fill("#composer", "只录阅读和默写")                       # 先写话、再传图：话留着当补充说明
             pg.set_input_files('.launch input[data-change="entry.files"]', images)
             pg.wait_for_selector(".launch__pages")
-            assert pg.locator(".launch__pages .page[data-page]").count() == 3
+            pg.wait_for_function("document.querySelectorAll('.launch__pages .page[data-page]').length === 3")  # 上传中先画占位卡
             assert pg.input_value("#composer") == "只录阅读和默写"
             order = lambda: pg.eval_on_selector_all(".page[data-page] img", "els => els.map(e => e.getAttribute('src'))")  # noqa: E731
             before = order()
@@ -237,48 +238,79 @@ def run(shots=None):
             assert planned == 7 + pinned_jys, planned                               # 静夜思今天刚补记过：提前复习时跳过（除非是自选）
             shot(pg, "05a-plan.png", full_page=True)
             pg.click('[data-action="rv.create"]')
-            pg.wait_for_selector(".rv__grading .ai")
-            pg.click(".rv__reveal >> nth=0")
-            pg.click('.rv__grades >> nth=0 >> [data-grade="2"]')
-            pg.wait_for_selector('.gbtn[aria-pressed="true"][data-grade="2"]')
-            pg.click('[data-action="rv.noteEdit"] >> nth=0')
-            pg.fill(".rv__noteinput", "漏了第二个采分点")
-            pg.keyboard.press("Enter")
-            pg.wait_for_selector('.rv__note:has-text("漏了第二个采分点")')
+            pg.wait_for_selector(".rv-q")                                           # 评分：一次一道题，左边答题卡
+            assert pg.get_attribute(".rv-nav__row >> nth=0", "aria-current") == "step"
+            pg.click('[data-action="rv.reveal"]')
+            pg.click('.rv-score [data-grade="2"]')
+            pg.wait_for_selector('.rv-score__opt[aria-pressed="true"][data-grade="2"]')
+            pg.wait_for_selector('.rv-nav__row[data-grade="2"]')                     # 答题卡同步着色
+            pg.fill(".rv-fb__input", "漏了第二个采分点")
+            pg.keyboard.press("Enter")                                              # 回车保存反馈
+            pg.wait_for_selector('.toast:has-text("反馈已保存")')
             shot(pg, "05-grading.png")
-            href = pg.get_attribute(".rv__ghead a", "href")
+            href = pg.get_attribute('.rv-top a[href^="/print/session"]', "href")
             pr = ctx.new_page()
             pr.goto(base + href + "&answers=1")
             assert pr.locator(".lines div").count() > 20 and pr.locator(".blank").count() >= 2
             shot(pr, "06-print.png", full_page=True)
 
-            q2, q3 = ".rv__q >> nth=1", ".rv__q >> nth=2"                            # 复习助手：跟着点中的题
-            pg.click(f"{q2} >> .rv__stem")
-            pg.wait_for_selector(".rv__q.is-focus >> nth=0")
-            assert "第 2 题" in pg.inner_text(".ai__target")
+            target = "document.querySelector('.ai__target')?.innerText.includes('第 {} 题')"
+            pg.click(".rv-q__stem")                                                 # 焦点离开输入框，键盘换题
+            pg.keyboard.press("ArrowRight")
+            pg.wait_for_function(target.format(2))                                  # 复习助手跟着换到第 2 题
+            pg.keyboard.press("ArrowLeft")
+            pg.wait_for_function(target.format(1))
+            assert pg.input_value(".rv-fb__input") == "漏了第二个采分点"               # 反馈确实存下了
+            pg.keyboard.press("ArrowRight")
+            pg.wait_for_function(target.format(2))
             pg.fill("#ai-composer", "这题从哪几方面想？")
             pg.keyboard.press("Enter")
             pg.wait_for_selector('.ai__msg--bot[data-status="done"]', timeout=20000)
-            assert "作用" in pg.inner_text(".ai__msg--bot >> nth=0")
+            bot = ".ai__msg--bot >> nth=0"
+            assert "作用" in pg.inner_text(bot)
+            assert pg.locator(f"{bot} >> .ai-think").count() >= 1                  # 思考过程看得见
+            done_tools = pg.locator(f'{bot} >> .ai-tool[data-status="done"]')       # 按需查阅：先看题，再读原文
+            assert done_tools.count() >= 1 and "看第 2 题" in done_tools.nth(0).inner_text(), done_tools.count()
+            done_tools.nth(0).locator(".ai-tool__head").click()
+            pg.wait_for_selector('.ai-tool__out:has-text("参考答案")')               # 展开看查到的内容
             assert pg.input_value("#ai-composer") == ""
+            pg.evaluate("""() => { const r = document.createRange(); r.selectNodeContents(document.querySelector('.rv-q__stem'));
+              const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }""")   # 选中题干 → 引用
+            pg.click(".rv-quote")
+            pg.wait_for_selector('.ai-ref:has-text("第 2 题题干")')
+            fake_ai.REQUESTS.clear()
+            pg.fill("#ai-composer", "这句怎么理解？")
+            pg.keyboard.press("Enter")
+            pg.wait_for_selector('.ai__msg--bot[data-status="done"] >> nth=1', timeout=20000)
+            assert pg.locator(".ai__msg--user >> nth=1 >> .ai-quote").count() == 1
+            assert pg.locator(".ai-ref").count() == 0                               # 发出后输入框里的引用清空
+            assert "（引用 1：第 2 题的题干）" in json.dumps(fake_ai.REQUESTS[0], ensure_ascii=False)
             pg.fill("#ai-composer", "我的作答：灯是线索，贯穿全文。")
             pg.click('[data-action="rv.aiMode"][data-arg="grade"]')                   # 输入框里的作答 + 打分
-            pg.wait_for_selector(".ai__sug", timeout=20000)
-            assert "基本" in pg.inner_text(".ai__sug")
+            pg.wait_for_selector(".ai-sug", timeout=20000)
+            assert "基本" in pg.inner_text(".ai-sug")
             pg.click('[data-action="rv.aiAdopt"][data-arg$=":all"]')
-            pg.wait_for_selector(f'{q2} >> .gbtn[aria-pressed="true"][data-grade="2"]')
-            pg.wait_for_selector(f'{q2} >> .rv__note:has-text("漏了象征义")')
-            pg.click(f"{q3} >> .rv__stem")
+            pg.wait_for_selector('.rv-score__opt[aria-pressed="true"][data-grade="2"]')
+            pg.wait_for_function("document.querySelector('.rv-fb__input')?.value.includes('漏了象征义')")
+            pg.click(".rv-nav__row >> nth=2")                                       # 答题卡点第 3 题
+            pg.wait_for_function(target.format(3))
             pg.click('[data-action="rv.aiMode"][data-arg="feedback"]')               # 写反馈：还没评分 → 先暂存
-            pg.wait_for_selector('.ai__msg--bot[data-status="done"] .ai__sug', timeout=20000)
+            pg.wait_for_selector('.ai__msg--bot[data-status="done"] .ai-sug', timeout=20000)
             pg.click('[data-action="rv.aiAdopt"][data-arg$=":note"]')
-            pg.wait_for_selector(f"{q3} >> .rv__note.is-pending")
-            pg.click(f'{q3} >> [data-grade="3"]')
-            pg.wait_for_selector(f'{q3} >> .rv__note:not(.is-pending):has-text("作用题")')
+            pg.wait_for_selector(".rv-fb.is-pending")
+            pg.keyboard.press("3")                                                  # 键盘自评，暂存的反馈一起写入
+            pg.wait_for_selector('.rv-score__opt[aria-pressed="true"][data-grade="3"]')
+            pg.wait_for_selector(".rv-fb:not(.is-pending)")
+            assert "作用题" in pg.input_value(".rv-fb__input")
             shot(pg, "06b-assistant.png")
+            pg.click(".rv-nav__row >> nth=0")                                       # 改评分：原来的反馈保留
+            pg.wait_for_function(target.format(1))
+            pg.keyboard.press("3")
+            pg.wait_for_selector('.rv-score__opt[aria-pressed="true"][data-grade="3"]')
+            assert pg.input_value(".rv-fb__input") == "漏了第二个采分点"
             pg.click('[data-action="rv.back"]')
-            pg.wait_for_selector(".rv__row")
-            assert f"评了 3/{planned}" in pg.inner_text(".rv__row >> nth=0"), pg.inner_text(".rv__row >> nth=0")
+            pg.wait_for_selector(".rv-sess")                                        # 左栏复习记录
+            assert f"评了 3/{planned}" in pg.inner_text(".rv-sess >> nth=0"), pg.inner_text(".rv-sess >> nth=0")
 
             pg.goto(base + "/#/library")                                               # 复习记录分页
             pg.click('[data-action="lib.tab"][data-arg="history"]')
@@ -334,6 +366,17 @@ def run(shots=None):
             shot(mp, "08-mobile-draft.png")
             mp.click('[data-action="entry.tab"][data-arg="chat"]')
             shot(mp, "09-mobile-chat.png")
+            mp.goto(base + "/#/review")                          # 窄屏复习：左栏是抽屉、助手是底部面板，不横向溢出
+            mp.click(".rv-top__rail")
+            mp.wait_for_selector('.rv[data-rail="open"] .rv-sess')
+            mp.click(".rv-sess >> nth=0 >> .rv-sess__main")
+            mp.wait_for_selector(".rv-q")
+            assert mp.evaluate("document.documentElement.scrollWidth") <= 390
+            mp.click(".rv-top__ai")
+            mp.wait_for_selector('.rv[data-ai="open"] #ai-composer')
+            shot(mp, "09b-mobile-review.png")
+            from e2e_pdf import check_pdf
+            check_pdf(browser, base, vault, images, shots)
             browser.close()
         assert not errors, errors
         print("e2e 主路径通过")

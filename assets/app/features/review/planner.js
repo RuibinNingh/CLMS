@@ -1,7 +1,8 @@
 /**
- * 安排复习的渲染：上半是「推荐清单」（程序按到期、上次评分、添加时间、薄弱题型推荐；可移除、换一批、放回），
- * 下半是「从题库挑题」（按板块 / 状态 / 添加时间 / 最近练习 / 上次评分 / 关键词筛选，点「加入」成为自选题）。
- * 自选题先占时间预算，推荐自动补足剩下的时间；两边的增删都会重新推荐。
+ * 安排复习（主区）：页头是到期基准日、合计和「确认安排」（不用滚到底）。下面两列：
+ * 左「本次安排」——时间、板块、题型、是否提前，程序推荐（按到期、上次评分、添加时间、薄弱题型）+ 自选，可移除、换一批、放回；
+ * 右「从题库挑题」——按板块 / 状态 / 添加时间 / 最近练习 / 上次评分 / 关键词筛选，点「加入」成为自选题。
+ * 自选题先占时间预算，推荐自动补足剩下的时间；两边的增删都会重新推荐。≥ 1501 两列并排、各自滚动；更窄时上下排。
  */
 import { html, each } from '../../core/html.js';
 import { formatDay, relativeDay } from '../../core/format.js';
@@ -67,37 +68,40 @@ function qtypeSelect(s) {
   </select>`;
 }
 
+/** 推荐下面的提示：自选了几道、放不下的到期题、已在别的复习里的、移除了几道（可放回）、薄弱题型。合计在页头。 */
 function summary(p, s) {
   if (s.planning && !p) return html`<p class="pl__sum muted">正在推荐…</p>`;
   if (!p) return '';
   const notes = [];
+  if (p.pinned) notes.push(`自选 ${p.pinned} 道，推荐补足剩下的时间`);
   if (p.due_left) notes.push(`还有 ${p.due_left} 道到期题这次放不下`);
   if (p.busy_skipped) notes.push(`${p.busy_skipped} 道已在未完成的复习里，没再推荐`);
   if (s.excluded.length) notes.push(html`移除了 ${s.excluded.length} 道 <button class="linkish" data-action="rv.unexclude">全部放回</button>`);
+  if (!notes.length && !p.weak?.length) return '';
   return html`<div class="pl__sum">
-    ${p.items.length ? html`<p>共 <b>${p.items.length}</b> 题，约 <b>${Math.round(p.minutes)}</b> / ${p.budget} 分钟（含读原文）${p.pinned ? html`，其中自选 ${p.pinned} 道` : ''}</p>`
-      : html`<p>这些条件下没有要复习的题。可以放宽板块 / 题型，或者到下面的题库里挑题。</p>`}
-    ${notes.length ? html`<p class="muted">${each(notes, (_, i) => i, (n, i) => html`${i ? '；' : ''}${n}`)}</p>` : ''}
+    ${notes.length ? html`<p>${each(notes, (_, i) => i, (n, i) => html`${i ? '；' : ''}${n}`)}</p>` : ''}
     ${p.weak?.length ? html`<p class="muted">薄弱题型：${p.weak.map(w => w.qtype).join('、')}（优先补同题型的其它题）</p>` : ''}
   </div>`;
 }
 
-export function planner(s) {
+function planner(s) {
   const p = s.plan;
-  return html`<section class="card pl">
-    <header class="pl__head"><h2>安排这次复习</h2>
-      <span class="muted">${s.horizon ? `按 ${formatDay(s.horizon, { weekday: true })}（下个复习日）计算到期` : ''}</span></header>
+  return html`<section class="pl" aria-label="本次安排">
     <div class="pl__opts">
-      <div class="seg" role="group" aria-label="时间">${each(BUDGETS, m => m, m => html`<button data-action="rv.budget" data-arg="${m}" aria-pressed="${String(s.minutes === m)}">${m} 分钟</button>`)}</div>
-      <div class="pl__genres">${each(GENRES, g => g.code, g => html`<button class="chip ${s.genres.has(g.code) ? 'chip--info' : ''}" data-action="rv.genre" data-arg="${g.code}" aria-pressed="${String(s.genres.has(g.code))}" data-genre="${g.code}"><span class="genre-dot"></span>${g.short}</button>`)}</div>
-      ${qtypeSelect(s)}
-      <label class="pl__fill"><input type="checkbox" data-change="rv.fill" ${s.fill ? html`checked` : ''}>时间有富余时提前复习</label>
+      <div class="pl__opt"><span class="pl__lab">时间</span>
+        <div class="seg" role="group" aria-label="时间">${each(BUDGETS, m => m, m => html`<button data-action="rv.budget" data-arg="${m}" aria-pressed="${String(s.minutes === m)}">${m} 分钟</button>`)}</div></div>
+      <div class="pl__opt"><span class="pl__lab">板块</span>
+        <div class="pl__genres">${each(GENRES, g => g.code, g => html`<button class="chip ${s.genres.has(g.code) ? 'chip--info' : ''}" data-action="rv.genre" data-arg="${g.code}" aria-pressed="${String(s.genres.has(g.code))}" data-genre="${g.code}"><span class="genre-dot"></span>${g.short}</button>`)}</div></div>
+      <div class="pl__opt"><span class="pl__lab">题型</span>${qtypeSelect(s)}
+        <label class="pl__fill"><input type="checkbox" data-change="rv.fill" ${s.fill ? html`checked` : ''}>时间有富余时提前复习</label></div>
     </div>
     ${summary(p, s)}
-    ${p?.items.length ? html`<ol class="pl__list ${s.planning ? 'is-busy' : ''}">${each(groups(p.items), g => `g-${g.key}`, planGroup)}</ol>` : ''}
-    <div class="pl__foot">
-      <button class="btn btn--ghost btn--sm" data-action="rv.shuffle" ${p?.items.some(x => x.tag !== 'manual') ? '' : html`disabled`} title="把这批推荐都换掉（自选的保留）">${icon('retry')}换一批</button>
-      <button class="btn btn--primary" data-action="rv.create" ${p?.items.length && !s.planning ? '' : html`disabled`}>${icon('check')}确认安排${p?.items.length ? ` ${p.items.length} 题` : ''}</button>
+    <div class="pl__scroll">
+      <div class="pl__listhead"><h3>本次安排${p?.items.length ? html`<small>${p.items.length} 题</small>` : ''}</h3>
+        <button class="btn btn--ghost btn--sm" data-action="rv.shuffle" ${p?.items.some(x => x.tag !== 'manual') ? '' : html`disabled`} title="把这批推荐都换掉（自选的保留）">${icon('retry')}换一批</button></div>
+      ${p?.items.length ? html`<ol class="pl__list ${s.planning ? 'is-busy' : ''}">${each(groups(p.items), g => `g-${g.key}`, planGroup)}</ol>`
+    : p && !s.planning ? html`<div class="pl__empty"><p>这些条件下没有要复习的题</p>
+      <small>可以放宽时间、板块或题型；想专门练哪几道，就从题库里挑出来加入。</small></div>` : ''}
     </div>
   </section>`;
 }
@@ -119,11 +123,11 @@ function pickRow(it, s) {
   </li>`;
 }
 
-export function picker(s) {
+function picker(s) {
   const k = s.pick;
   const f = k.facets || {};
-  return html`<section class="card pk">
-    <header class="pl__head"><h2>从题库挑题</h2><span class="muted">加入的题一定会排进这次复习，推荐会自动补足剩下的时间</span></header>
+  return html`<section class="pk" aria-label="从题库挑题">
+    <header class="pk__head"><h3>从题库挑题</h3><small>加入的题一定会排进这次复习</small></header>
     <div class="pk__filters">
       <input class="input pk__search" type="search" placeholder="搜题干、篇名、出处、题号" value="${k.q}" data-input="rv.pickSearch" aria-label="搜索题库">
       <div class="seg" role="group" aria-label="板块">
@@ -136,9 +140,24 @@ export function picker(s) {
       ${select('grade', GRADE, k.grade, '上次评分', f.grade)}
       <select class="select pk__sel" data-change="rv.pickFilter" data-arg="sort" aria-label="排序">${each(SORTS, x => x[0], x => opt(x[0], `按${x[1]}`, k.sort))}</select>
     </div>
-    ${k.items.length ? html`<ul class="pk__list">${each(k.items, it => it.id, it => pickRow(it, s))}</ul>`
-      : html`<p class="empty">${k.loading ? '正在加载…' : '没有符合条件的题'}</p>`}
-    ${k.items.length ? html`<p class="pk__more muted">显示 ${k.items.length} / 共 ${k.total} 题
-      ${k.items.length < k.total ? html`<button class="btn btn--sm" data-action="rv.pickMore" ${k.loading ? html`disabled` : ''}>加载更多</button>` : ''}</p>` : ''}
+    <div class="pk__scroll">
+      ${k.items.length ? html`<ul class="pk__list">${each(k.items, it => it.id, it => pickRow(it, s))}</ul>`
+        : html`<p class="empty">${k.loading ? '正在加载…' : '没有符合条件的题'}</p>`}
+      ${k.items.length ? html`<p class="pk__more muted">显示 ${k.items.length} / 共 ${k.total} 题
+        ${k.items.length < k.total ? html`<button class="btn btn--sm" data-action="rv.pickMore" ${k.loading ? html`disabled` : ''}>加载更多</button>` : ''}</p>` : ''}
+    </div>
   </section>`;
+}
+
+export function planView(s) {
+  const p = s.plan;
+  const n = p?.items.length || 0;
+  return html`<header class="rv-top">
+      <button class="btn btn--ghost btn--icon rv-top__rail" data-action="rv.rail" aria-label="打开复习记录" title="复习记录">${icon('panel')}</button>
+      <div class="rv-top__title"><h2>安排复习</h2>
+        <small>${s.horizon ? `按 ${formatDay(s.horizon, { weekday: true })}（下个复习日）计算到期` : '　'}</small></div>
+      ${n ? html`<p class="rv-top__sum"><b>${n}</b> 题 · 约 <b>${Math.round(p.minutes)}</b> / ${p.budget} 分钟<small>含读原文</small></p>` : ''}
+      <button class="btn btn--primary" data-action="rv.create" ${n && !s.planning ? '' : html`disabled`}>${icon('check')}${n ? `确认安排 ${n} 题` : '确认安排'}</button>
+    </header>
+    <div class="rv-plan">${planner(s)}${picker(s)}</div>`;
 }

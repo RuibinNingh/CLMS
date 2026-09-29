@@ -6,6 +6,7 @@ import { html, each } from '../../core/html.js';
 import { formatTime, formatDay } from '../../core/format.js';
 import { icon } from '../../ui/icons.js';
 import { GENRES } from '../../domain/genres.js';
+import { FILE_ACCEPT } from '../../core/pdf.js';
 
 export const VIEWS = [['all', '全部'], ['active', '进行中'], ['ready', '待入库'], ['committed', '已入库'], ['trash', '回收站']];
 export const STATUS = {
@@ -15,7 +16,7 @@ export const STATUS = {
 
 const uploadButton = (label, primary = true) => html`
   <label class="btn btn--sm ${primary ? 'btn--primary' : ''} upload-btn">${icon('upload')}<span>${label}</span>
-    <input type="file" accept="image/*" multiple class="visually-hidden" data-change="entry.files"></label>`;
+    <input type="file" accept="${FILE_ACCEPT}" multiple class="visually-hidden" data-change="entry.files"></label>`;
 
 function dayLabel(iso, today) {
   const d = (iso || '').slice(0, 10);

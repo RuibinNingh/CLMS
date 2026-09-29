@@ -1,6 +1,7 @@
 /**
  * 纸面渲染（录入草稿、题库详情、复习共用）：原文分段、答题横线、默写下划线、红笔答案。
- * 原文按换行分段；以「注」开头的段落按注释排小字；古诗不缩进。
+ * 原文按换行分段；以「注」开头的段落按注释排小字；古诗不缩进。每段带 data-para（段号，1 起），
+ * 与复习助手 material_read 的段号一致，评分页选中文字「引用」时靠它定位。
  */
 import { html, each } from '../core/html.js';
 
@@ -11,7 +12,7 @@ export function passage(text, genre, { numbered = false } = {}) {
   const paras = String(text || '').split('\n').map(p => p.trim()).filter(Boolean);
   if (!paras.length) return html`<p class="paper-empty">（没有原文）</p>`;
   return html`<div class="passage ${genre === 'poetry' ? 'passage--poem' : ''}">${each(paras, (_, i) => i, (p, i) => html`
-    <p class="${p.startsWith('注') ? 'passage__note' : ''}">${numbered && genre !== 'poetry' ? html`<span class="passage__n">${i + 1}</span>` : ''}${p}</p>`)}</div>`;
+    <p class="${p.startsWith('注') ? 'passage__note' : ''}" data-para="${i + 1}">${numbered && genre !== 'poetry' ? html`<span class="passage__n">${i + 1}</span>` : ''}${p}</p>`)}</div>`;
 }
 
 export const ruled = n => html`<div class="ruled" aria-label="${n} 行答题区">${Array.from({ length: Math.max(0, n) }, () => html`<i></i>`)}</div>`;

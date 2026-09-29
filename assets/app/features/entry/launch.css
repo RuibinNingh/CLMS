@@ -1,7 +1,7 @@
 /* 开始界面（launch.js）：居中的大输入框、页面条（排序 / 旋转 / 删页 / 说明）、快捷问题。输入框与对话栏输入框同名
    view-transition-name（composer，见 entry.css），开始后平滑落到底部。 */
 .launch { flex: 1; display: grid; place-items: center; min-height: 0; overflow-y: auto; padding: var(--sp-8) var(--sp-6); }
-.launch__inner { display: grid; gap: var(--sp-2); width: min(100%, var(--launch-width)); animation: launch-in var(--dur-4) var(--ease-out) both; }
+.launch__inner { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); width: min(100%, var(--launch-width)); min-width: 0; animation: launch-in var(--dur-4) var(--ease-out) both; }
 .launch__hist { justify-self: start; }
 .launch__title { text-align: center; font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height: var(--leading-tight); letter-spacing: -0.01em; }
 .launch__sub { justify-self: center; max-width: 34em; text-align: center; color: var(--fg-3); font-size: var(--text-sm); }
@@ -13,19 +13,32 @@
 }
 .launch__input::placeholder { color: var(--fg-3); }
 .launch__box .composer__row { padding: var(--sp-2) var(--sp-3) var(--sp-3); }
+.launch__box .composer__tools { align-items: center; }
+.launch__box .composer__tools > .chip { height: calc(var(--ctl-sm) + var(--sp-1)); }
 .launch__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-3); }
 .launch__chips .chip { cursor: pointer; transition: background var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out); }
 .launch__chips .chip:hover { background: var(--accent-soft); color: var(--accent); }
 .launch__warn { justify-self: center; margin-top: var(--sp-3); }
 
-.launch__pages { display: flex; gap: var(--sp-3); overflow-x: auto; padding: var(--sp-3) var(--sp-3) var(--sp-1); border-bottom: 1px solid var(--border-1); }
-.page { flex: none; display: grid; align-content: start; gap: var(--sp-1); width: 112px; cursor: grab; animation: page-in var(--dur-3) var(--ease-out) both; }
+.launch__pages { display: flex; align-items: start; gap: var(--sp-3); min-width: 0; overflow-x: auto; padding: var(--sp-3); border-bottom: 1px solid var(--border-1); }
+.launch__pagebar { position: relative; min-width: 0; }
+.launch__expand {
+  position: absolute; top: var(--sp-2); right: var(--sp-2); display: flex; align-items: center; gap: var(--sp-1);
+  min-height: var(--ctl-sm); padding: var(--sp-1) var(--sp-2); border: 1px solid var(--border-2); border-radius: var(--r-sm);
+  box-shadow: var(--elev-2); background: var(--surface-1); color: var(--accent); font-size: var(--text-xs); cursor: pointer;
+}
+.launch__expand:hover { background: var(--accent-soft); border-color: var(--accent); }
+.launch__expand svg { width: 14px; height: 14px; }
+.page__preview { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.page__preview:focus-visible { outline-offset: -3px; }
+.page__no { pointer-events: none; }
+.page { flex: none; display: grid; grid-template-rows: auto var(--ctl-sm); gap: var(--sp-1); width: 124px; min-width: 0; cursor: grab; animation: page-in var(--dur-3) var(--ease-out) both; }
 .launch__pages.is-dragging .page:hover .page__img { border-color: var(--accent); box-shadow: var(--ring-line); }
 .page__img {
-  position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden;
+  position: relative; aspect-ratio: 3 / 4; overflow: hidden;
   border: 1px solid var(--border-1); border-radius: var(--r-sm); background: var(--surface-2); transition: border-color var(--dur-1);
 }
-.page__img img { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform var(--dur-3) var(--ease-out); }
+.page__img img { width: 100%; height: 100%; object-fit: contain; object-position: center top; transition: transform var(--dur-3) var(--ease-out); }
 .page__img[data-rotate="90"] img { transform: rotate(90deg) scale(.75); }
 .page__img[data-rotate="180"] img { transform: rotate(180deg); }
 .page__img[data-rotate="270"] img { transform: rotate(270deg) scale(.75); }
@@ -46,17 +59,20 @@
 .page__btn svg { width: 13px; height: 13px; }
 .page__btn:first-child svg { transform: rotate(180deg); }
 .page__btn:disabled { opacity: .35; cursor: default; }
-.page__note {
-  width: 100%; padding: var(--sp-0_5) 0; border: 0; border-bottom: 1px dashed var(--border-2); outline: none; background: transparent;
-  color: var(--fg-2); font-size: var(--text-2xs); text-align: center;
+.page__note, .page__addnote {
+  display: block; width: 100%; height: var(--ctl-sm); min-width: 0; padding: 0 var(--sp-1); border: 1px solid transparent;
+  border-radius: var(--r-xs); background: transparent; color: var(--fg-2); font-size: var(--text-xs);
+  line-height: var(--leading-ui); text-align: center;
 }
-.page__note:focus { border-bottom-color: var(--accent); }
+.page__note:hover, .page__note:focus { border-color: var(--border-2); background: var(--surface-0); }
+.page__note:focus { border-color: var(--accent); outline: none; box-shadow: var(--ring); }
+.page__addnote { color: var(--fg-3); }
 .page--add { cursor: default; }
 .page__addbtn {
-  display: grid; place-items: center; align-self: start; width: 100%; aspect-ratio: 3 / 4; border: 1px dashed var(--border-2); border-radius: var(--r-sm);
+  display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; border: 1px dashed var(--border-2); border-radius: var(--r-sm);
   color: var(--fg-3); cursor: pointer; transition: color var(--dur-1), border-color var(--dur-1);
 }
-.page__addbtn:hover { color: var(--accent); border-color: var(--accent); }
+.page__addbtn:hover, .page__addbtn:focus-within { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .page__addbtn svg { width: 20px; height: 20px; }
 .shot { position: relative; overflow: hidden; }
 .shot__no { display: block; padding: var(--sp-1) var(--sp-2); font-size: var(--text-2xs); color: var(--fg-3); text-align: left; }
@@ -69,5 +85,10 @@
 @media (max-width:760px){
   .launch { place-items: start center; padding: var(--sp-4) var(--sp-3); }
   .launch__title { font-size: var(--text-xl); }
-  .page { width: 92px; }
+  .launch__box .composer__row { flex-wrap: wrap; }
+  .launch__box .composer__tools { width: 100%; }
+  .launch__box .composer__send { margin-left: auto; }
+  .page { width: 104px; }
 }
+/* 减少动态效果：入场动画带 fill both，0ms 也会一直「生效」，直接去掉 */
+@media (prefers-reduced-motion:reduce){ .page, .launch__inner { animation: none; } }

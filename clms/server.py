@@ -6,7 +6,6 @@
 默认只监听 127.0.0.1。写请求校验同源（Origin 与 Host 一致）。
 """
 
-import base64
 import email.utils
 import http.server
 import json
@@ -123,13 +122,17 @@ def _drafts(vault, q, b):
 def _save_images(vault, images) -> list:
     ids = []
     for image in images or []:
-        data = str(image.get("data") or "")
-        data = data.split(",", 1)[1] if data.startswith("data:") else data
         try:
-            ids.append(drafts.save_image(vault, base64.b64decode(data, validate=False)))
+            ids.append(drafts.receive_image(vault, image))
         except (ValueError, TypeError) as exc:
-            raise ValueError(f"{image.get('name') or '图片'}：{exc}")
+            raise ValueError(f"{image.get('name') if isinstance(image, dict) else '图片'}：{exc}")
     return ids
+
+
+@route("POST", "/api/image")
+def _image_upload(vault, q, b):
+    """逐页保存图片，整份 PDF 拆完后再把引用一次性加入草稿。"""
+    return {"image": _save_images(vault, [b])[0]}
 
 
 @route("POST", "/api/drafts")
@@ -146,16 +149,16 @@ def _drafts_create(vault, q, b):
     if b.get("review_session"):
         sessions.view(vault, str(b["review_session"]))          # 不存在就 404
         draft = drafts.create(vault, ids, hint=str(b.get("hint") or ""), kind="review",
-                              session_id=str(b["review_session"]))
+                              session_id=str(b["review_session"]), sources=b.get("images"), upload_id=str(b.get("upload_id") or ""))
     else:
-        draft = drafts.create(vault, ids, hint=str(b.get("hint") or ""))
+        draft = drafts.create(vault, ids, hint=str(b.get("hint") or ""), sources=b.get("images"), upload_id=str(b.get("upload_id") or ""))
     return {"drafts": [drafts.view(vault, draft["id"])]}
 
 
 @route("POST", "/api/draft/pages")
 def _draft_pages(vault, q, b):
     """准备阶段：{id, pages:[{image, rotate, note}], hint, add:[{name, data}]}。"""
-    return drafts.update_pages(vault, b.get("id", ""), b.get("pages"), b.get("hint"), _save_images(vault, b.get("add")))
+    return drafts.update_pages(vault, b.get("id", ""), b.get("pages"), b.get("hint"), _save_images(vault, b.get("add")), b.get("add"))
 
 
 @route("POST", "/api/draft/start")
@@ -529,6 +532,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def make_server(vault: str, host: str = "127.0.0.1", port: int = 8472):
     mimetypes.add_type("application/javascript", ".js")
+    mimetypes.add_type("application/javascript", ".mjs")
+    mimetypes.add_type("application/wasm", ".wasm")
     mimetypes.add_type("text/css", ".css")
     mimetypes.add_type("font/woff2", ".woff2")
     Handler.vault = vault

@@ -117,7 +117,7 @@ function runEnd(b, ctx) {
 function user(b) {
   const time = b.queued ? '排队中 · AI 下一步会读到' : b.dropped ? '已停止，没有送达' : formatTime(b.at);
   return html`<div class="msg msg--user ${b.queued ? 'is-queued' : ''} ${b.dropped ? 'is-dropped' : ''}">
-    ${b.images?.length ? html`<div class="msg__imgs">${each(b.images, x => x, x => html`
+    ${b.images?.length ? html`<div class="msg__imgs">${each(b.images, (_, n) => n, x => html`
       <button class="msg__img" data-action="entry.pane" data-arg="image" title="看原图"><img src="/api/image?id=${x}" alt="图片"></button>`)}</div>` : ''}
     ${b.text ? html`<div class="bubble"><p class="msg__text">${b.text}</p></div>` : ''}<time>${time}</time></div>`;
 }

@@ -1,6 +1,6 @@
 /**
  * 录入页控制器：状态、录入记录、实时流、自动保存与动作。渲染在 layout.js，管理类动作在 manage.js，纯数据操作在 edit.js。
- * - 流程：居中输入框（hero.js：新对话，或上传后确认页序 / 方向 / 说明）→ 开始 → Agent 执行（对话里实时显示思考、
+ * - 流程：居中输入框（launch.js：新对话，或上传后确认页序 / 方向 / 说明）→ 开始 → Agent 执行（对话里实时显示思考、
  *   说的话、工具调用）→ 校对 → 入库 →「录下一份」回到居中输入框。两种界面之间用 View Transition 过渡（输入框平滑移动）。
  * - 实时：打开一份草稿就订阅 /api/draft/events（SSE）。block 事件整块替换，delta 事件逐字追加（requestAnimationFrame 合批重画），
  *   status 事件稍后重新拉草稿（右侧草稿随工具调用实时更新）。live_seq 之前的事件忽略，避免和刚拉到的快照重复。
@@ -21,6 +21,8 @@ import { BUSY, view } from './layout.js';
 import { manageActions } from './manage.js';
 import { createRate } from './gauge.js';
 import { bindListeners } from './listeners.js';
+import { fileImports } from './imports.js';
+import { pageManager } from './page-manager.js';
 import { addGroup, addItem, clone, insertBlank, parsePath, removeEntry, setField, stepLines } from './edit.js';
 
 let lastActive = null;
@@ -48,6 +50,7 @@ function mount(root, { bus, store }) {
   let alive = true; let pollTimer = 0; let saveTimer = 0; let flashTimer = 0; let refetchTimer = 0; let frame = 0;
   let closeStream = null; let streamId = null; let loadSeq = 0; let openSeq = 0;
   let focusAfter = null; let scrollAnchor = null; let forceBottom = false;
+  const manager = pageManager({ s, root, render });
 
   function render() {
     if (!alive) return;
@@ -57,6 +60,7 @@ function mount(root, { bus, store }) {
     const log = root.querySelector('#chat-log');
     const stick = forceBottom || !log || log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     morph(root, view(s));
+    manager.sync();
     root.querySelectorAll('textarea[data-autosize]').forEach(autosize);
     const after = root.querySelector('#chat-log');
     if (after && stick) after.scrollTop = after.scrollHeight;
@@ -209,6 +213,8 @@ function mount(root, { bus, store }) {
 
   // ── 上传 / 打开 ───────────────────────────────────
   async function open(id, { fromHero = false } = {}) {
+    manager.reset();
+    imports.clear();
     await flush();
     const mine = ++openSeq;                              // 打开以最后一次为准；后台刷新不会打断它
     const res = await get(`/api/draft?id=${encodeURIComponent(id)}`);
@@ -229,6 +235,8 @@ function mount(root, { bus, store }) {
 
   /** 回到居中输入框（新录入 / 录下一份）。 */
   async function fresh() {
+    manager.reset();
+    imports.clear();
     await flush();
     await transition(() => {
       closeStream?.(); closeStream = null; streamId = null;
@@ -239,7 +247,7 @@ function mount(root, { bus, store }) {
 
   async function heroSend() {
     const text = s.heroText.trim();
-    if (!text || s.starting) return;
+    if (!text || s.starting || s.imports.length) return;
     s.starting = true; render();
     const made = await post('/api/drafts', { chat: true });
     const sent = made.ok ? await post('/api/draft/message', { id: made.data.drafts[0].id, text }, { timeout: 120000 }) : made;
@@ -250,15 +258,9 @@ function mount(root, { bus, store }) {
     poll();
   }
 
-  async function takeFiles(files) {
-    const images = await readImages(files || []);
-    if (!images.length) { toast('没有可用的图片', { tone: 'bad' }); return; }
-    if (s.draft?.status === 'staged') { actions.pageAdd({ el: { files: [], value: '' } }, images); return; }
-    toast(`上传 ${images.length} 张图片…`);
-    const res = await post('/api/drafts', { images, hint: s.draft ? '' : s.heroText.trim() }, { timeout: 120000 });
-    if (!res.ok) { toast(res.error.message, { tone: 'bad', ms: 6000 }); return; }
-    await open(res.data.drafts[0].id);
-  }
+  const imports = fileImports({ s, root, render, post, applyDraft, connect, refreshList, fresh });
+  const takeFiles = imports.take;
+  const pickFiles = ({ el }) => { const files = [...el.files]; el.value = ''; takeFiles(files); };
 
   async function call(path, body, { reload = true, timeout } = {}) {
     const res = await post(path, body, timeout ? { timeout } : {});
@@ -267,13 +269,15 @@ function mount(root, { bus, store }) {
     return res.data;
   }
 
-  const managed = manageActions({ s, root, render, refreshList, open, fresh, post, toast, confirmDialog, readImages, applyDraft, poll });
+  const managed = manageActions({ s, root, render, refreshList, open, fresh, post, toast, confirmDialog, applyDraft, poll });
   const actions = {
     ...managed,
-    pageAdd: (ctx, preset) => (preset ? post('/api/draft/pages', { id: s.draft.id, add: preset }, { timeout: 120000 })
-      .then(res => { if (res.ok) { applyDraft(res.data); render(); } else toast(res.error.message, { tone: 'bad' }); }) : managed.pageAdd(ctx)),
+    ...manager.actions,
+    pageAdd: pickFiles,
+    importRetry: imports.retry,
+    importRemove: imports.remove,
     open: ({ arg }) => open(arg),
-    files: ({ el }) => { const files = [...el.files]; el.value = ''; takeFiles(files); },
+    files: pickFiles,
     async manual({ el }) {
       const genre = el.value; el.value = '';
       if (!genre) return;
@@ -286,7 +290,7 @@ function mount(root, { bus, store }) {
       s.heroText = el.value;
       autosize(el);
       const btn = root.querySelector('.launch .composer__send');
-      if (btn && s.draft?.status !== 'staged') btn.disabled = !s.heroText.trim();
+      if (btn && s.draft?.status !== 'staged') btn.disabled = !s.heroText.trim() || Boolean(s.imports.length);
     },
     heroSuggest: ({ arg }) => { s.heroText = arg; focusAfter = '#composer'; render(); },
     split: ({ arg }) => { s.split = arg === 'each'; render(); },
@@ -380,6 +384,8 @@ function mount(root, { bus, store }) {
 
   return () => {
     alive = false;
+    manager.dispose();
+    imports.clear();
     if (s.dirty) saveNow();
     clearTimeout(pollTimer); clearTimeout(flashTimer); clearTimeout(refetchTimer); clearInterval(ticker);
     cancelAnimationFrame(frame);

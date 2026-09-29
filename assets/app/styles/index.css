@@ -11,9 +11,12 @@
 @import url("../features/entry/timeline.css") layer(features);
 @import url("../features/entry/history.css") layer(features);
 @import url("../features/entry/launch.css") layer(features);
+@import url("../features/entry/pdf.css") layer(features);
+@import url("../features/entry/page-manager.css") layer(features);
 @import url("../features/library/library.css") layer(features);
 @import url("../features/library/browse.css") layer(features);
 @import url("../features/review/review.css") layer(features);
 @import url("../features/review/planner.css") layer(features);
+@import url("../features/review/grading.css") layer(features);
 @import url("../features/review/assistant.css") layer(features);
 @import url("../features/settings/settings.css") layer(features);

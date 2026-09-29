@@ -8,6 +8,7 @@ import { BUSY, renderChat } from './chat.js';
 import { renderCanvas, renderImages } from './canvas.js';
 import { renderHistory } from './history.js';
 import { renderLaunch } from './launch.js';
+import { renderPageManager } from './page-manager.js';
 
 export { BUSY };
 
@@ -86,5 +87,6 @@ export function view(s) {
     ${renderHistory(s)}
     ${s.histOpen ? html`<button class="entry__scrim" data-action="entry.hist" aria-label="收起记录"></button>` : ''}
     <div class="entry__main">${main}</div>
+    ${renderPageManager(s)}
   </div>`;
 }

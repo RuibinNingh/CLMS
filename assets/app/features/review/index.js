@@ -1,6 +1,9 @@
 /**
- * 复习页：安排（程序推荐 + 从题库挑题 → 确认）、复习列表（打印 / 评分 / 删除）、评分视图（评分、反馈、撤销 + 右侧复习助手）。
- * 概览页经 store.reviewIntent 带意图进入：{plan} 直接推荐、{session} 打开某次复习、{pinned:[题号]} 题库里选好的题带进来。
+ * 复习页（工作台，占满高度、各栏自己滚动）：左栏 + 主区。
+ * - 安排：左栏「复习记录」（进行中 / 已评完），主区「安排复习」（页头确认 + 本次安排 | 从题库挑题）。
+ * - 评分：左栏「答题卡」（题号导航），主区一次一道题（原文 | 题目、对答案、自评、反馈）+ 右侧复习助手。
+ * 离开复习页再回来，回到上次打开的那次复习和那道题（模块级记忆，刷新清空）。
+ * 概览 / 题库经 store.reviewIntent 带意图进入：{plan} 直接推荐、{session} 打开某次复习、{pinned:[题号]} 带进自选。
  */
 import { html } from '../../core/html.js';
 import { morph } from '../../core/dom.js';
@@ -8,17 +11,34 @@ import { defineActions } from '../../core/events.js';
 import { get, post } from '../../core/api.js';
 import { toast, confirmDialog } from '../../ui/feedback.js';
 import { GENRES, loadTaxonomy } from '../../domain/genres.js';
-import { grading, sessionList } from './view.js';
-import { picker, planner } from './planner.js';
 import { initialPlanState, planActions } from './plan.js';
-import { assistantActions, initialAssistant } from './assistant.js';
+import { planView } from './planner.js';
+import { questionNav, sessionsRail } from './rail.js';
+import { gradingView } from './grading.js';
+import { gradingActions } from './grading-actions.js';
+import { assistantActions, initialAssistant } from './assistant-actions.js';
+import { bindQuote, placeQuote, quoteButton } from './quote.js';
+
+const memory = { session: null, focus: null };
+
+function layout(s) {
+  const grading = Boolean(s.session);
+  return html`<div class="rv" data-mode="${grading ? 'grade' : 'plan'}" data-rail="${s.railOpen ? 'open' : 'closed'}" data-ai="${s.ai.open ? 'open' : 'closed'}">
+    <aside class="rv__rail" aria-label="${grading ? '答题卡' : '复习记录'}">${grading ? questionNav(s) : sessionsRail(s)}</aside>
+    ${s.railOpen ? html`<button class="rv__scrim" data-action="rv.rail" aria-label="收起左栏"></button>` : ''}
+    <div class="rv__main">${grading ? gradingView(s) : planView(s)}</div>
+    ${quoteButton(s)}
+  </div>`;
+}
 
 export const page = {
-  id: 'review', title: '复习', icon: 'review',
+  id: 'review', title: '复习', icon: 'review', workbench: true,
   mount(root, { store, bus }) {
-    const s = { ...initialPlanState(new Set(GENRES.map(g => g.code))), sessions: [], session: null, revealed: new Set(),
-      openMats: new Set(), busy: null, noteFor: null, focus: null, pendingNotes: new Map(), ai: initialAssistant(),
-      stickAi: false, taxonomy: null, today: '' };
+    const s = {
+      ...initialPlanState(new Set(GENRES.map(g => g.code))), sessions: null, session: null, revealed: new Set(), busy: null,
+      focus: null, pendingNotes: new Map(), ai: initialAssistant(), stickAi: false, taxonomy: null, today: '',
+      railOpen: false, quote: null, open: new Map(),
+    };
     let alive = true; let frame = 0;
 
     function render() {
@@ -26,89 +46,64 @@ export const page = {
       cancelAnimationFrame(frame); frame = 0;
       const log = root.querySelector('#ai-log');
       const stick = s.stickAi || !log || log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-      morph(root, s.session ? grading(s) : html`<div class="rv">${planner(s)}${picker(s)}
-        <section class="rv__sessions"><h2>复习记录</h2>${sessionList(s)}</section></div>`);
+      morph(root, layout(s));
       const after = root.querySelector('#ai-log');
       if (after && stick) after.scrollTop = after.scrollHeight;
       s.stickAi = false;
+      placeQuote(root, s);
+      memory.session = s.session?.id || null; memory.focus = s.focus;
     }
     const soon = () => { if (!frame) frame = requestAnimationFrame(render); };
     const fail = res => { toast(res.error.message, { tone: 'bad' }); };
 
-    async function loadSessions() { const r = await get('/api/sessions'); if (r.ok) s.sessions = r.data.sessions; render(); }
-    async function openSession(id) {
-      const r = await get(`/api/session?id=${encodeURIComponent(id)}`);
-      if (!r.ok) return fail(r);
-      s.session = r.data; s.revealed = new Set(); s.openMats = new Set(Object.keys(r.data.materials).slice(0, 1));
-      s.pendingNotes = new Map(); s.noteFor = null;
-      s.focus = (r.data.items.find(x => !x.grade) || r.data.items[0])?.id || null;
-      render(); root.scrollIntoView({ block: 'start' });
-      return null;
+    async function loadSessions() {
+      const r = await get('/api/sessions');
+      if (r.ok) s.sessions = r.data.sessions; else if (s.sessions === null) s.sessions = [];
+      render();
     }
-    /** 只换数据、不动界面状态（对答案、展开的原文、焦点都保留）。 */
+    async function openSession(id, focus = null) {
+      const r = await get(`/api/session?id=${encodeURIComponent(id)}`);
+      if (!r.ok) { fail(r); return; }
+      if (s.session?.id !== id) { s.revealed = new Set(); s.pendingNotes = new Map(); s.quote = null; }
+      s.session = r.data; s.railOpen = false; s.stickAi = true;
+      const items = r.data.items;
+      s.focus = (items.find(x => x.id === focus) || items.find(x => !x.grade) || items[0])?.id || null;
+      render();
+    }
+    /** 只换数据、不动界面状态（对答案、焦点、对话都保留）。 */
     async function refresh() {
       const r = await get(`/api/session?id=${encodeURIComponent(s.session.id)}`);
       if (r.ok && s.session?.id === r.data.id) { s.session = r.data; render(); }
     }
 
     const plans = planActions(s, { render, afterCreate: async id => { await loadSessions(); return openSession(id); } });
-    const ai = assistantActions(s, {
-      render, soon, refresh, bus,
-      clearComposer: () => { const ta = root.querySelector('#ai-composer'); if (ta) ta.value = ''; },
-    });
-    const unbindKeys = ai.bindKeys(root);
+    const grades = gradingActions(s, { root, render, refresh, bus });
+    const ai = assistantActions(s, { root, render, soon, refresh, bus });
+
+    function back() {
+      ai.abort();
+      s.session = null; s.focus = null; s.quote = null; s.railOpen = false; s.ai = initialAssistant();
+      render(); loadSessions(); plans.makePlan();
+    }
 
     const undefine = defineActions('rv', {
       ...plans.actions,
+      ...grades.actions,
       ...ai.actions,
       open: ({ arg }) => openSession(arg),
-      back: () => { ai.abort(); s.session = null; s.ai = initialAssistant(); loadSessions(); plans.makePlan(); },
+      back,
+      newPlan: () => { if (s.session) back(); else { s.railOpen = false; render(); } },
+      rail: () => { s.railOpen = !s.railOpen; render(); },
       async cancel({ arg }) {
         const ok = await confirmDialog({ title: '删除这次复习？', body: '已经录的评分会一起撤销（提交链里留有记录）。', ok: '删除', danger: true });
-        if (!ok) return null;
+        if (!ok) return;
         const r = await post('/api/session/cancel', { id: arg });
-        if (!r.ok) return fail(r);
+        if (!r.ok) { fail(r); return; }
         toast('已删除');
-        plans.makePlan();
-        return loadSessions();
-      },
-      focus: ({ arg }) => { if (s.focus !== arg) { s.focus = arg; s.stickAi = true; render(); } },
-      ask: ({ arg }) => {
-        s.focus = arg; s.ai.open = true; s.stickAi = true; render();
-        root.querySelector('#ai-composer')?.focus();
-      },
-      reveal: ({ arg }) => { s.revealed.add(arg); s.focus = arg; render(); },
-      mat: ({ arg, event }) => { event.preventDefault(); if (s.openMats.has(arg)) s.openMats.delete(arg); else s.openMats.add(arg); render(); },
-      async grade({ arg }) {
-        const [itemId, value] = arg.split(':');
-        s.busy = itemId; s.focus = itemId; render();
-        const note = s.pendingNotes.get(itemId);
-        const r = await post('/api/session/grade', { session_id: s.session.id, item_id: itemId, grade: Number(value), ...(note ? { note } : {}) });
-        s.busy = null;
-        if (!r.ok) { render(); return fail(r); }
-        s.pendingNotes.delete(itemId);
-        s.session = r.data.session; render();
-        bus.emit('library:changed');
-        return null;
-      },
-      dropNote: ({ arg }) => { s.pendingNotes.delete(arg); render(); },
-      noteEdit: ({ arg }) => { s.noteFor = s.noteFor === arg ? null : arg; render(); root.querySelector('.rv__noteinput')?.focus(); },
-      async note({ el, arg }) {
-        const item = s.session.items.find(x => x.id === arg);
-        s.noteFor = null;
-        if (!item?.grade) return render();
-        const r = await post('/api/record/update', { commit_id: item.grade.commit_id, note: el.value });
-        if (!r.ok) return fail(r);
-        toast('反馈已保存');
-        return refresh();
-      },
-      async ungrade({ arg }) {
-        const r = await post('/api/session/ungrade', { session_id: s.session.id, item_id: arg });
-        if (!r.ok) return fail(r);
-        s.session = r.data; render();
-        return null;
+        if (s.session?.id === arg) back(); else { plans.makePlan(); loadSessions(); }
       },
     });
+    const unbind = [grades.bindKeys(ai.open), ai.bindComposer(), bindQuote(root, s, render)];
 
     const intent = store.get().reviewIntent;
     store.set({ reviewIntent: null });
@@ -117,9 +112,10 @@ export const page = {
     loadSessions();
     if (intent?.pinned?.length) s.pinned = [...intent.pinned];
     if (intent?.session) openSession(intent.session);
+    else if (!intent && memory.session) openSession(memory.session, memory.focus);
     plans.makePlan();
     plans.loadPick();
     render();
-    return () => { alive = false; cancelAnimationFrame(frame); ai.abort(); unbindKeys(); undefine(); };
+    return () => { alive = false; cancelAnimationFrame(frame); ai.abort(); unbind.forEach(f => f()); undefine(); };
   },
 };

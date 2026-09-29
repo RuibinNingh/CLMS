@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_FILES = {"AGENTS.md", "README.md", "clms.html", "clms_engine.py", "run.bat", "run.sh", ".gitignore"}
 SOURCE_DIRS = {"AI", "assets", "clms", "deploy", "tests"}
 SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".css", ".html", ".md", ".bat", ".sh", ".service", ".svg", ".woff2", ".txt"}
-BINARY_SUFFIXES = {".woff2"}
+BINARY_SUFFIXES = {".woff2", ".bcmap", ".pfb", ".ttf", ".wasm"}
 EXCLUDED_DIRS = {"__pycache__", ".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "dist",
                  "语文", ".clms", "logs"}
 EXCLUDED_NAMES = {"config.json", "ledger.db"}
@@ -40,6 +40,8 @@ def _is_source(relative: str) -> bool:
     if parts[0] not in SOURCE_DIRS:
         return False
     suffix = os.path.splitext(name)[1].lower()
+    if relative.startswith("assets/vendor/pdfjs/"):
+        return suffix in (SOURCE_SUFFIXES | BINARY_SUFFIXES) or name.startswith("LICENSE")
     if suffix == ".txt":                  # 只收字体许可证
         return relative.startswith("assets/vendor/fonts/") and name.endswith("-OFL.txt")
     return suffix in SOURCE_SUFFIXES

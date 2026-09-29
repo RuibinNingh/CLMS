@@ -79,7 +79,7 @@ export function renderCanvas(groups, o) {
 export function renderImages(pages, zoom) {
   if (!pages?.length) return html`<div class="empty">这份草稿没有原图（手动录入）</div>`;
   return html`<div class="shots ${zoom ? 'is-zoom' : ''}">
-    ${each(pages, p => p.image, (p, n) => html`<button class="shot" data-action="entry.zoom" data-rotate="${p.rotate || 0}" title="${zoom ? '缩小' : '放大'}">
+    ${each(pages, p => p.id, (p, n) => html`<button class="shot" data-key="${p.id}" data-action="entry.zoom" data-rotate="${p.rotate || 0}" title="${zoom ? '缩小' : '放大'}">
       <span class="shot__no">第 ${n + 1} 页${p.note ? ` · ${p.note}` : ''}</span><img src="/api/image?id=${p.image}" alt="原图" loading="lazy"></button>`)}
   </div>`;
 }

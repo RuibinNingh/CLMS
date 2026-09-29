@@ -1,0 +1,60 @@
+.page-manager {
+  position: fixed; inset: var(--sp-6); width: min(1280px, calc(100vw - var(--sp-12))); height: calc(100dvh - var(--sp-12));
+  max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden;
+  border: 1px solid var(--border-2); border-radius: var(--r-lg); background: var(--surface-0); color: var(--fg-1); box-shadow: var(--elev-3);
+}
+.page-manager[open] { display: flex; flex-direction: column; }
+.page-manager::backdrop { background: var(--scrim); }
+.page-manager__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex: none;
+  padding: var(--sp-5) var(--sp-6); background: var(--surface-1); border-bottom: 1px solid var(--border-1);
+}
+.page-manager__head h2 { font-size: var(--text-xl); font-weight: var(--weight-semibold); }
+.page-manager__head p { margin-top: var(--sp-1); color: var(--fg-3); font-size: var(--text-xs); }
+.page-manager__bar {
+  display: flex; align-items: center; gap: var(--sp-3); flex: none; min-width: 0;
+  padding: var(--sp-3) var(--sp-6); border-bottom: 1px solid var(--border-1);
+}
+.page-manager__help, .page-manager__filename { flex: 1; min-width: 0; color: var(--fg-3); font-size: var(--text-xs); }
+.page-manager__filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-manager__scale { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-xs); color: var(--fg-2); }
+.page-manager__scale input { width: 110px; height: var(--ctl-sm); accent-color: var(--accent); cursor: pointer; }
+.page-manager__scale output { min-width: 4em; font-variant-numeric: tabular-nums; text-align: right; }
+.page-manager__grid {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--page-size)), 1fr));
+  align-content: start; align-items: start; gap: var(--sp-6); padding: var(--sp-6); overflow: auto; overscroll-behavior: contain;
+}
+.page-manager__grid .page { width: 100%; }
+.page-manager__grid .page__img { background: var(--paper); box-shadow: var(--elev-1); }
+.page-manager__grid .page__tools { opacity: 1; transform: none; }
+.page-manager__grid .page__btn { width: var(--ctl-sm); height: var(--ctl-sm); }
+.page-manager__grid .page__note { background: var(--surface-1); border-color: var(--border-1); }
+.page-manager__grid.is-dragging .page:hover .page__img { border-color: var(--accent); box-shadow: var(--ring-line); }
+.page-manager__grid .file-card__paper { width: 50px; height: 65px; }
+.page-manager__grid .file-card__body { gap: var(--sp-4); padding: var(--sp-5); }
+.page-manager__foot {
+  flex: none; display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6); border-top: 1px solid var(--border-1); background: var(--surface-1);
+}
+.page-manager__foot > span { color: var(--fg-3); font-size: var(--text-xs); }
+.page-manager__preview { flex: 1; min-height: 0; display: flex; padding: var(--sp-6); overflow: auto; overscroll-behavior: contain; }
+.page-manager__paper {
+  position: relative; flex: none; width: var(--preview-width, 1px); height: var(--preview-height, 1px); margin: auto;
+  background: var(--paper); box-shadow: var(--elev-2);
+}
+.page-manager__paper img {
+  position: absolute; left: 50%; top: 50%; width: var(--image-width, 1px); height: var(--image-height, 1px); max-width: none;
+  transform: translate(-50%, -50%) rotate(var(--image-rotate, 0deg));
+}
+@media (max-width:760px) {
+  .page-manager { inset: 0; width: 100%; height: 100dvh; border: 0; border-radius: 0; }
+  .page-manager__head { padding: var(--sp-4); }
+  .page-manager__bar { flex-wrap: wrap; padding: var(--sp-2) var(--sp-4); gap: var(--sp-2); }
+  .page-manager__help { flex-basis: 100%; }
+  .page-manager__scale { flex: 1; }
+  .page-manager__scale input { flex: 1; min-width: 60px; }
+  .page-manager__filename { flex-basis: calc(100% - var(--sp-12) * 2); }
+  .page-manager__grid { padding: var(--sp-4); gap: var(--sp-4); }
+  .page-manager__foot { padding: var(--sp-3) var(--sp-4); }
+  .page-manager__preview { padding: var(--sp-3); }
+}

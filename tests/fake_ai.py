@@ -9,8 +9,11 @@
   识图时两个板块以上就 delegate 给子代理（每个子代理 material_set + items_add 或 dictation_add），单个板块自己
   group_add + items_add；对话里「第 N 题 + 答案 / 题型 / 留白」→ item_update，「入库」→ draft_commit，
   「停用 Q-…」→ library_suspend；复习批改 → session_get + review_grade。
-- 复习助手请求（第一条消息含「## 复习助手」，不带 tools）：提问 → 讲思路；打分 → 有作答时给
-  【建议】{"grade": 2, "note": …}，没有作答时请学生发作答；写反馈 → 【建议】{"note": …}。stream=true 时流式。
+- 复习助手请求（第一条消息含「## 复习助手」）：带 tools 时是只读 Agent（review_agent_reply）——先 question_get
+  看学生正在看的那道，提问时再 material_read 读原文前两段，然后回答；不带 tools 是旧做法（关掉 Agent 模式）。
+  回答都按 review_reply：提问 → 讲思路；打分 → 有作答时给【建议】{"grade": 2, "note": …}，没有作答时请学生发作答；
+  写反馈 → 【建议】{"note": …}。stream=true 时流式。
+- REQUESTS 记着最近收到的请求体（测试用来检查上下文里带了什么、没带什么）。
 
   请求带 stream=true 时按 SSE 流式回复：先吐 reasoning_content（思考），再吐一句说明，最后把工具参数分片吐出；
   FAKE_AI_STREAM_DELAY=秒（默认 0.004）控制每片间隔。
@@ -19,6 +22,7 @@
 环境变量 FAKE_AI_DELAY=秒 可模拟慢模型。
 """
 
+import collections
 import copy
 import http.server
 import itertools
@@ -82,6 +86,7 @@ SET_C = {"groups": [
 _cycle = itertools.cycle([SET_A, SET_B, SET_C])
 _keys = itertools.cycle(["A", "B", "C"])
 _lock = threading.Lock()
+REQUESTS = collections.deque(maxlen=120)
 QTYPES = ["意象作用题", "句子赏析题", "表达技巧题", "情感主旨题", "人物形象题", "环境描写作用题", "内容概括题", "翻译题"]
 
 
@@ -154,6 +159,8 @@ def agent_reply(messages: list, tools: list) -> dict:
     results = [m for m in turn if m["role"] == "tool"]
     last_calls = [c["function"]["name"] for c in (done[-1].get("tool_calls") or [])] if done else []
 
+    if "## 复习助手" in first:                                     # 复习助手（只读 Agent）
+        return review_agent_reply(messages, names)
     if "你是 CLMS 录入流程里的子代理" in first:                     # 子代理
         match = re.search(r"\[fake:([ABC]):(\d+)\]", first)
         group = SETS[match.group(1)]["groups"][int(match.group(2))] if match else SET_C["groups"][0]
@@ -231,7 +238,8 @@ SAY = {"delegate": "这份卷子有几个大题，我分给子代理并行录入
        "material_set": "先把原文逐字转录下来。", "items_add": "再按题号添加小题。", "item_update": "按你说的改这道题。",
        "dictation_add": "把名句默写按空录进去。", "session_get": "先看看这次复习的题目和参考答案。",
        "review_grade": "对照照片逐题评分，写上反馈。", "group_add": "只有一个大题，我直接录。",
-       "draft_commit": "好的，入库。", "library_suspend": "停用这道题。"}
+       "draft_commit": "好的，入库。", "library_suspend": "停用这道题。",
+       "question_get": "先看看这道题和参考答案。", "material_read": "再读一下原文的相关段落。"}
 
 
 def _chunks(text, size):
@@ -280,12 +288,26 @@ def review_reply(messages: list) -> dict:
     return {"content": "这道题考的是意象在文中的**作用**，一般从三层想：\n- 结构上：是不是线索\n- 内容上：象征什么\n- 主旨上：寄托什么情感\n\n先对照原文找到每次写灯的地方。"}
 
 
+def review_agent_reply(messages: list, names: set) -> dict:
+    """复习助手的只读 Agent：先 question_get 看学生正在看的那道；提问时再读原文前两段；然后按 review_reply 回答。"""
+    first = _text(messages[0])
+    start = max(i for i, m in enumerate(messages) if m["role"] == "user")
+    called = [c["function"]["name"] for m in messages[start + 1:] if m["role"] == "assistant" for c in m.get("tool_calls") or []]
+    now = re.search(r"学生正在看：第 (\d+) 题", first)
+    mat = re.search(r"材料《[^》]*》（(M-\d+)", first)
+    if "question_get" in names and "question_get" not in called:
+        return {"tool_calls": [_call("question_get", n=int(now.group(1)) if now else 1)]}
+    if "## 这次的任务" not in _text(messages[start]) and mat and "material_read" in names and "material_read" not in called:
+        return {"tool_calls": [_call("material_read", material_id=mat.group(1), paragraphs="1-2")]}
+    return review_reply(messages)
+
 class FakeAI(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        REQUESTS.append(body)
         time.sleep(float(os.environ.get("FAKE_AI_DELAY", "0")))
         if body.get("stream_options") and os.environ.get("FAKE_AI_NO_STREAM_OPTIONS"):
             payload = b'{"error": {"message": "Unrecognized request argument: stream_options"}}'

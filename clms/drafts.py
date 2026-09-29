@@ -13,6 +13,7 @@ edit（手改）/ system（入库）/ ai（旧的一次性流程）。Agent 执�
 后台执行（Agent / 旧流程）、插话、停止在 draft_runs.py。
 """
 
+import base64
 import datetime
 import hashlib
 import json
@@ -72,6 +73,20 @@ def image_path(vault: str, image_id: str) -> str:
     return os.path.join(sub_dir(vault, "images"), image_id)
 
 
+def receive_image(vault: str, image: dict) -> str:
+    """接收图片字节或已经逐页上传的图片引用；引用必须确实存在。"""
+    if not isinstance(image, dict):
+        raise DraftError("图片参数无效")
+    if image.get("image"):
+        image_id = str(image["image"])
+        if not os.path.isfile(image_path(vault, image_id)):
+            raise DraftError("图片不存在，请重新上传")
+        return image_id
+    data = str(image.get("data") or "")
+    data = data.split(",", 1)[1] if data.startswith("data:") else data
+    return save_image(vault, base64.b64decode(data, validate=False))
+
+
 # ── 存取 ────────────────────────────────────────────────
 
 def _path(vault, draft_id):
@@ -84,6 +99,8 @@ def _upgrade(draft: dict) -> dict:
     """旧草稿补字段：pages、消息 id。"""
     if "pages" not in draft:
         draft["pages"] = [{"image": i, "rotate": 0, "note": ""} for i in draft.get("images") or []]
+    for index, page in enumerate(draft["pages"]):
+        page.setdefault("id", f"legacy-{index}")
     for msg in draft.get("messages") or []:
         msg.setdefault("id", "m" + uuid.uuid4().hex[:10])
     draft.setdefault("agent", {"messages": [], "run": 0, "inbox": [], "token": None})
@@ -156,19 +173,43 @@ def agent_mode(vault: str) -> bool:
     return bool(load_config(vault).get("ai_agent", True))
 
 
-def _pages(image_ids):
-    return [{"image": i, "rotate": 0, "note": ""} for i in dict.fromkeys(image_ids)]
+def _pages(image_ids, sources=None):
+    """普通图片按内容合并；PDF 页面有独立身份，相同内容也保留页数。"""
+    pages, seen = [], set()
+    for index, image in enumerate(image_ids):
+        source = (sources[index].get("source") or {}) if sources and index < len(sources) else {}
+        if source:
+            if not isinstance(source, dict):
+                raise DraftError("PDF 页面来源无效")
+            token = str(source.get("import_id") or "")
+            number = int(source.get("page") or 0)
+            if not re.fullmatch(r"[0-9a-f]{32}", token) or not 1 <= number <= 60:
+                raise DraftError("PDF 页面来源无效")
+            page = {"id": f"pdf-{token}-{number}", "image": image, "rotate": 0, "note": "",
+                    "source": {"name": str(source.get("name") or "PDF")[:240], "page": number, "import_id": token}}
+        else:
+            if image in seen:
+                continue
+            page = {"id": uuid.uuid4().hex, "image": image, "rotate": 0, "note": ""}
+        seen.add(image)
+        pages.append(page)
+    if len({p["id"] for p in pages}) != len(pages):
+        raise DraftError("PDF 页面来源重复")
+    return pages
 
 
 def create(vault: str, image_ids: list, hint: str = "", manual_genre: str = "", kind: str = "",
-           session_id: str = "") -> dict:
+           session_id: str = "", sources=None, upload_id: str = "") -> dict:
     """新建草稿。上传的图片只进入「准备」（staged），用户确认页序后才开始执行。"""
     kind = kind or ("manual" if manual_genre else "extract")
     if kind in ("chat", "review") and not agent_mode(vault):
         raise DraftError("对话和 AI 批改需要 Agent 模式：到「设置」打开")
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    pages = _pages(image_ids)
-    draft = {"id": f"D-{stamp}-{uuid.uuid4().hex[:4]}", "created_at": now_iso(), "updated_at": now_iso(),
+    if upload_id and not re.fullmatch(r"[0-9a-f]{32}", upload_id):
+        raise DraftError("上传编号无效")
+    pages = _pages(image_ids, sources)
+    draft_id = f"D-upload-{upload_id}" if upload_id else f"D-{stamp}-{uuid.uuid4().hex[:4]}"
+    draft = {"id": draft_id, "created_at": now_iso(), "updated_at": now_iso(),
              "status": "staged" if pages else "ready", "images": [p["image"] for p in pages], "pages": pages,
              "hint": hint, "kind": kind, "name": "", "session_id": session_id, "messages": [], "revisions": [],
              "error": "", "committed": None, "last_job": None,
@@ -178,13 +219,15 @@ def create(vault: str, image_ids: list, hint: str = "", manual_genre: str = "", 
             {"template": "", "blanks": {}}]}]), "manual")
         msg(draft, "edit", "新建空白草稿，直接在右侧填写", changes=[])
     with _lock:
+        if upload_id and os.path.isfile(_path(vault, draft_id)):
+            return load(vault, draft_id)
         save(vault, draft)
     return draft
 
 
 # ── 准备阶段：页序、旋转、每页说明、加页 → 开始 ────────────────
 
-def update_pages(vault: str, draft_id: str, pages=None, hint=None, add=None) -> dict:
+def update_pages(vault: str, draft_id: str, pages=None, hint=None, add=None, sources=None) -> dict:
     with _lock:
         draft = load(vault, draft_id)
         if draft["status"] != "staged":
@@ -192,17 +235,26 @@ def update_pages(vault: str, draft_id: str, pages=None, hint=None, add=None) -> 
         known = set(draft["images"]) | set(add or [])
         if pages is not None:
             clean = []
+            originals = {p["id"]: p for p in draft["pages"]}
             for page in pages if isinstance(pages, list) else []:
                 image = str((page or {}).get("image") or "")
                 if image not in known:
                     raise DraftError("页面里有不属于这份草稿的图片")
+                original = originals.get(page.get("id")) if page.get("id") else next(
+                    (p for p in draft["pages"] if p["image"] == image and p["id"] not in {x["id"] for x in clean}), None)
+                if page.get("id") and (not original or original["image"] != image):
+                    raise DraftError("页面编号无效")
                 rotate = int((page or {}).get("rotate") or 0) % 360
-                clean.append({"image": image, "rotate": rotate if rotate in ROTATIONS else 0,
+                clean.append({**(original or {"id": uuid.uuid4().hex}), "image": image,
+                              "rotate": rotate if rotate in ROTATIONS else 0,
                               "note": str((page or {}).get("note") or "").strip()[:60]})
+            if len({p["id"] for p in clean}) != len(clean):
+                raise DraftError("页面编号重复")
             draft["pages"] = clean
-        for image in add or []:
-            if image not in [p["image"] for p in draft["pages"]]:
-                draft["pages"].append({"image": image, "rotate": 0, "note": ""})
+        for page in _pages(add or [], sources):
+            duplicate = page["id"] in {p["id"] for p in draft["pages"]} if page.get("source") else page["image"] in {p["image"] for p in draft["pages"]}
+            if not duplicate:
+                draft["pages"].append(page)
         draft["images"] = [p["image"] for p in draft["pages"]]
         if hint is not None:
             draft["hint"] = str(hint)[:500]

@@ -112,3 +112,30 @@ export function morph(root, result) {
   }
   return root;
 }
+
+/** 新图片从原文件卡片的位置散开；只影响这次新增节点，后续 morph 不重播。 */
+export function revealFrom(elements, origin, { duration, stagger, easing }) {
+  if (!origin || !duration) return;
+  elements.forEach((el, index) => {
+    const rect = el.getBoundingClientRect();
+    const dx = origin.left + origin.width / 2 - rect.left - rect.width / 2;
+    const dy = origin.top - rect.top;
+    const turn = index % 2 ? 5 : -5;
+    el.animate([
+      { opacity: 0, transform: `translate(${dx}px, ${dy}px) scale(.72) rotate(${turn}deg)` },
+      { opacity: 1, transform: 'translate(0, 0) scale(1) rotate(0deg)' },
+    ], { duration, delay: Math.min(index, 7) * stagger, easing, fill: 'backwards' });
+  });
+}
+
+/** 受控尺寸只写 CSS 自定义属性，模板仍由 html / morph 产生。 */
+export function setVars(el, values) {
+  if (!el) return;
+  Object.entries(values).forEach(([name, value]) => el.style.setProperty(name, String(value)));
+}
+
+export function showModal(dialog) {
+  if (dialog && !dialog.matches(':modal')) { dialog.close(); dialog.showModal(); }
+}
+
+export function closeModal(dialog) { dialog?.close(); }

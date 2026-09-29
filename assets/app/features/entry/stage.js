@@ -9,7 +9,7 @@ import { icon } from '../../ui/icons.js';
 const NOTES = ['题目页', '答案页', '题目和答案', '学生作答', '只看第一大题'];
 
 function page(p, i, n) {
-  return html`<li class="page" draggable="true" data-page="${i}" data-key="${p.image}">
+  return html`<li class="page" draggable="true" data-page="${i}" data-key="${p.id}">
     <div class="page__img" data-rotate="${p.rotate || 0}"><img src="/api/image?id=${p.image}" alt="第 ${i + 1} 页" draggable="false"></div>
     <div class="page__bar">
       <b>第 ${i + 1} 页</b>
@@ -32,7 +32,7 @@ export function renderStage(d, s) {
         <p class="muted">AI 会按下面的顺序读图。拖动或用箭头调整顺序，转正拍歪的照片，删掉不需要的页；给页面写一句说明会一起告诉 AI。</p></div>
       <span class="stage__count"><button class="btn btn--ghost btn--sm hist-toggle" data-action="entry.hist">${icon('library')}记录</button>${pages.length} 页</span>
     </header>
-    <ol class="stage__pages ${s.dragPage !== null ? 'is-dragging' : ''}">${each(pages, p => p.image, (p, i) => page(p, i, pages.length))}
+    <ol class="stage__pages ${s.dragPage !== null ? 'is-dragging' : ''}">${each(pages, p => p.id, (p, i) => page(p, i, pages.length))}
       <li class="page page--add" data-key="add"><label class="page__addbtn">${icon('plus')}<span>加一页</span>
         <input type="file" accept="image/*" multiple class="visually-hidden" data-change="entry.pageAdd"></label></li>
     </ol>

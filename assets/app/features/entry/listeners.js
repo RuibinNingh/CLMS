@@ -12,6 +12,7 @@ export function bindListeners(root, { s, render, takeFiles, readImages, movePage
   };
   const pageOf = el => el?.closest?.('.page[data-page]');
   const onDragStart = event => {
+    if (s.imports.length) { event.preventDefault(); return; }
     const p = pageOf(event.target);
     if (!p) return;
     s.dragPage = Number(p.dataset.page);

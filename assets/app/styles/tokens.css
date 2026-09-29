@@ -111,6 +111,7 @@
   --ctl-sm:28px; --ctl-md:34px; --ctl-lg:42px;
   --r-xs:4px; --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
   --dur-1:120ms; --dur-2:180ms; --dur-3:260ms; --dur-4:420ms; --dur-flash:1800ms;
+  --dur-pdf-burst:320ms; --dur-pdf-reveal:520ms; --dur-pdf-stagger:35ms;
   --ease-out:cubic-bezier(.2,.8,.2,1); --ease-in-out:cubic-bezier(.4,0,.2,1);
   --z-sticky:10; --z-sidebar:20; --z-dropdown:100; --z-drawer:200;
   --z-modal:300; --z-toast:400; --z-tooltip:500;
@@ -118,6 +119,8 @@
   --ring-line:0 0 0 1px var(--accent);      /* 选中卡片的描边 */
   --indent:2em;                            /* 段首缩进（原文、题干） */
   --chat-width:440px; --hist-width:272px; --launch-width:720px; --rail-width:64px;
+  /* 复习页：左栏（复习记录 / 题号导航）、右边复习助手的宽度；题目纸面的最大行宽 */
+  --review-rail-width:248px; --review-ai-width:clamp(340px, 24vw, 460px); --review-sheet-width:720px;
   --scroll-thumb:var(--border-2); --scroll-thumb-hover:var(--fg-3);
   --sidebar-width:196px;
 }
@@ -126,4 +129,5 @@
 }
 @media (prefers-reduced-motion:reduce){
   :root{ --dur-1:0ms; --dur-2:0ms; --dur-3:0ms; --dur-4:0ms; --dur-flash:0ms; }
+  :root{ --dur-pdf-burst:0ms; --dur-pdf-reveal:0ms; --dur-pdf-stagger:0ms; }
 }

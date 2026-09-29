@@ -1,4 +1,5 @@
-"""v0.5：两种记忆类型、复习推荐（自选 / 移除 / 未完成复习）、题库分面筛选与分组、复习历史筛选、复习助手。"""
+"""v0.5：两种记忆类型、复习推荐（自选 / 移除 / 未完成复习）、题库分面筛选与分组、复习历史筛选；
+v0.6：复习助手改为只读 Agent（按需调工具看题和原文、引用、照片跨轮、关掉 Agent 模式时的旧做法）。"""
 
 import datetime
 import json
@@ -156,15 +157,31 @@ class LibraryAndRecordsTests(TempVault):
         self.assertEqual((page["total"], len(page["records"])), (2, 1))
 
 
+LONG_TEXT = "①老街在城的东头，街不长。\n②修鞋的周伯的灯最暗，光只够照亮手里的鞋。\n③后来老街要拆了，一时竟不知是灯照着街，还是街托着灯。\n④如今城东是一片新楼。"
+
+
+def _group_long():
+    from clms import draft_schema
+    return draft_schema.normalize_groups([
+        {"genre": "现代文阅读", "material": {"title": "老街的灯", "author": "佚名", "text": LONG_TEXT},
+         "items": [{"no": "7", "qtype": "意象作用题", "stem": "分析“灯”的作用。", "answer": "①线索②象征", "score": 6},
+                   {"no": "8", "qtype": "句子赏析题", "stem": "赏析第③段画线句。", "answer": "①设问②照托", "score": 4}]},
+        {"genre": "默写", "dictation": [{"template": "床前明月光，{书写区域1}。", "blanks": {"1": "疑是地上霜"}}]},
+    ])
+
+
 class ReviewAssistantTests(TempVault):
+    PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
     def setUp(self):
         super().setUp()
         import fake_ai
         from clms.server import make_server
+        self.fake = fake_ai
         self.ai = fake_ai.start(0)
         save_config(self.vault, {"ai_base_url": f"http://127.0.0.1:{self.ai.server_address[1]}/v1",
                                  "ai_api_key": "k", "ai_model": "fake"})
-        self.ids = creation.commit_draft(self.vault, {"id": "D-x", "images": []}, _group_a())["item_ids"]
+        self.ids = creation.commit_draft(self.vault, {"id": "D-x", "images": []}, _group_long())["item_ids"]
         self.sid = sessions.create(self.vault, self.ids)["id"]
         self.server = make_server(self.vault, "127.0.0.1", 0)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -180,18 +197,32 @@ class ReviewAssistantTests(TempVault):
     def ask(self, body):
         req = urllib.request.Request(self.base + "/api/review/ai", data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json"})
+        self.fake.REQUESTS.clear()
         with urllib.request.urlopen(req, timeout=20) as res:
             text = res.read().decode()
         return [json.loads(line[5:]) for line in text.splitlines() if line.startswith("data:")]
 
+    def sent(self):
+        """这次助手请求发给模型的每一轮请求体的全部文字（按轮）。"""
+        out = []
+        for body in self.fake.REQUESTS:
+            parts = []
+            for m in body["messages"]:
+                content = m.get("content")
+                parts += [c.get("text", "") for c in content] if isinstance(content, list) else [content or ""]
+            out.append("\n".join(parts))
+        return out
+
     def test_context_hides_answer_until_revealed(self):
         job = review_ai.prepare(self.vault, {"session_id": self.sid, "item_id": self.ids[0], "text": "怎么想"})
-        text = review_ai.context_text(self.vault, job)
+        text = review_ai.context_text(self.vault, job)                    # 旧做法：整道题并进上下文
         self.assertIn("## 参考答案", text)
         self.assertIn("老街的灯", text)
         self.assertIn("还没对答案", text)
+        self.assertIn("还没对这道题的答案", review_ai.index_text(self.vault, job))
         job["revealed"] = True
         self.assertNotIn("还没对答案", review_ai.context_text(self.vault, job))
+        self.assertNotIn("还没对这道题的答案", review_ai.index_text(self.vault, job))
 
     def test_parse_suggestion(self):
         reply, sug = review_ai.parse_suggestion('分析……\n【建议】{"grade": 2, "note": "漏了象征"}', "modern", "grade")
@@ -205,19 +236,96 @@ class ReviewAssistantTests(TempVault):
     def test_stream_ask_grade_feedback(self):
         events = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "ask", "text": "这题怎么想"})
         self.assertEqual(events[0]["type"], "start")
+        self.assertTrue(events[0]["agent"])
         self.assertTrue(any(e["type"] == "delta" and e["kind"] == "text" for e in events))
+        self.assertTrue(any(e["type"] == "block" and e["kind"] == "thinking" for e in events))   # 思考逐字推给前端
         self.assertIn("作用", events[-1]["reply"])
         self.assertIsNone(events[-1]["suggestion"])
         nothing = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "grade"})
         self.assertIsNone(nothing[-1]["suggestion"])                   # 没有作答：不编分
-        history = [{"role": "user", "text": "我的作答：灯是线索"}, {"role": "assistant", "text": "收到"}]
+        history = [{"role": "user", "text": "我的作答：灯是线索"}, {"role": "assistant", "text": "收到", "tools": ["看第 1 题"]}]
         graded = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "grade", "history": history})
         self.assertEqual(graded[-1]["suggestion"]["grade"], 2)
         self.assertNotIn("【建议】", graded[-1]["reply"])
+        self.assertIn("这一轮查过：看第 1 题", self.sent()[0])        # 上一轮查过什么只留一句，内容不重发
         fb = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "feedback"})
         self.assertIn("note", fb[-1]["suggestion"])
-        state_reviews = records.list_records(self.vault)["total"]
-        self.assertEqual(state_reviews, 0)                             # 助手本身不写记录
+        self.assertEqual(records.list_records(self.vault)["total"], 0)  # 助手本身不写记录
+
+    def test_agent_reads_by_tools_not_injection(self):
+        events = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "ask", "text": "这题怎么想"})
+        tools = {e["id"]: e for e in events if e["type"] == "tool"}
+        names = [e["name"] for e in events if e["type"] == "tool" and e["status"] == "running"]
+        self.assertEqual(names, ["question_get", "material_read"])
+        self.assertTrue(all(tools[k]["status"] == "done" for k in tools))
+        self.assertEqual(events[-1]["tools"], 2)
+        done = [e for e in events if e["type"] == "tool" and e["status"] == "done"]
+        self.assertIn("①线索②象征", done[0]["result"])                 # 结果也推给前端（可展开看）
+        self.assertIn("[2] ②修鞋", done[1]["result"])
+        self.assertNotIn("[3]", done[1]["result"])                      # 只读了 1–2 段
+        first, last = self.sent()[0], self.sent()[-1]
+        self.assertNotIn("修鞋的周伯", first)                            # 第一轮：原文不在上下文里
+        self.assertNotIn("①线索②象征", first)                          # 参考答案也要查
+        self.assertIn("学生正在看：第 1 题", first)
+        self.assertIn("修鞋的周伯", last)                                # 查过之后才有
+        self.assertNotIn("如今城东", last)                               # 没读的段落始终不发
+
+    def test_tools_ranges_and_scope(self):
+        from clms import review_tools
+        from clms.harness import ToolError
+        job = review_ai.prepare(self.vault, {"session_id": self.sid, "item_id": self.ids[1], "text": "?"})
+        tools = {t.name: t for t in review_tools.tools(self.vault, job)}
+        mid = self.ids and sessions.view(self.vault, self.sid)["items"][0]["material_id"]
+        run = lambda name, **a: tools[name].execute(a, None).content          # noqa: E731
+        self.assertEqual(review_tools.parse_range("2-3、1", 4), [2, 3, 1])
+        self.assertEqual(review_tools.parse_range("3–9", 4), [3, 4])
+        self.assertIn("[3] ③后来", run("material_read", paragraphs="3"))
+        found = run("material_read", material_id=mid, query="新楼")
+        self.assertIn("[4]", found)
+        self.assertNotIn("[1]", found)
+        self.assertIn("没有找到", run("material_read", query="不存在的句子"))
+        self.assertIn("第 2 题", run("question_get"))                    # 默认是学生正在看的那道
+        self.assertIn("还没对这道题的答案", run("question_get"))
+        self.assertIn("疑是地上霜", run("question_get", n=3))
+        self.assertIn("M-", run("review_outline"))
+        self.assertIn("以前没有复习过", run("item_history", n=1))
+        with self.assertRaises(ToolError):
+            run("question_get", n=9)
+        with self.assertRaises(ToolError):
+            run("material_read", material_id="M-999999")
+        with self.assertRaises(ToolError):
+            run("material_read", paragraphs="第二段")
+        self.assertEqual(tools["material_read"].label({"paragraphs": "2-3"}), "读《老街的灯》第 2-3 段")
+
+    def test_quote_refs_sent_with_location(self):
+        mid = sessions.view(self.vault, self.sid)["items"][0]["material_id"]
+        refs = [{"text": "一时竟不知是灯照着街，还是街托着灯。", "where": {"material_id": mid, "para": "3"}},
+                {"text": "赏析第③段画线句。", "where": {"n": "2", "part": "stem"}}]
+        events = self.ask({"session_id": self.sid, "item_id": self.ids[1], "mode": "ask", "refs": refs})
+        self.assertEqual(events[-1]["type"], "done")
+        first = self.sent()[0]
+        self.assertIn(f"（引用 1：《老街的灯》第 3 段（{mid}））", first)
+        self.assertIn("> 一时竟不知是灯照着街", first)
+        self.assertIn("（引用 2：第 2 题的题干）", first)
+        self.assertIn(review_ai.QUOTE_TEXT, first)                       # 只引用不写字：默认一句
+
+    def test_photo_saved_sent_and_kept_for_next_turn(self):
+        events = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "grade",
+                           "images": [{"name": "a.png", "data": self.PNG}]})
+        self.assertEqual(len(events[0]["images"]), 1)
+        self.assertEqual(events[-1]["suggestion"]["grade"], 2)         # 假模型看到照片就当有作答
+        history = [{"role": "user", "text": "", "images": events[0]["images"]}, {"role": "assistant", "text": "收到"}]
+        again = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "grade", "history": history})
+        self.assertEqual(again[-1]["suggestion"]["grade"], 2)          # 上一轮的照片仍按原图发
+
+    def test_legacy_injection_when_agent_mode_off(self):
+        save_config(self.vault, {"ai_agent": False})
+        events = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "ask", "text": "这题怎么想"})
+        self.assertFalse(events[0]["agent"])
+        self.assertFalse(any(e["type"] == "tool" for e in events))
+        self.assertIn("修鞋的周伯", self.sent()[0])                     # 旧做法：原文整篇并进第一条消息
+        self.assertNotIn("tools", self.fake.REQUESTS[0])
+        self.assertIn("作用", events[-1]["reply"])
 
     def test_rejects_item_outside_session(self):
         req = urllib.request.Request(self.base + "/api/review/ai", method="POST", headers={"Content-Type": "application/json"},
@@ -225,13 +333,6 @@ class ReviewAssistantTests(TempVault):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(req, timeout=10)
         self.assertEqual(ctx.exception.code, 400)
-
-    def test_photo_saved_and_sent(self):
-        png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-        events = self.ask({"session_id": self.sid, "item_id": self.ids[0], "mode": "grade",
-                           "images": [{"name": "a.png", "data": png}]})
-        self.assertEqual(len(events[0]["images"]), 1)
-        self.assertEqual(events[-1]["suggestion"]["grade"], 2)         # 假模型看到照片就当有作答
 
 
 if __name__ == "__main__":

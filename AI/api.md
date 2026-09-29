@@ -55,7 +55,7 @@
 | POST `/api/session/grade` | `{session_id, item_id, grade, note}` | `{commit_id, session}`；已评过则先 void 再评 |
 | POST `/api/session/ungrade` | `{session_id, item_id}` | 复习视图 |
 | POST `/api/session/cancel` | `{id}` | `{id, cancelled}` |
-| POST `/api/review/ai` | `{session_id, item_id, mode(ask/grade/feedback), text, images:[{name,data}], history:[{role, text, images:[编号]}], revealed}` | SSE 流（见下「复习助手」）；题不在这次复习里 400、复习不存在 404、没配置 AI 400，都在开始流式之前返回 |
+| POST `/api/review/ai` | `{session_id, item_id, mode(ask/grade/feedback), text, images:[{name,data}], refs:[{text, where:{material_id?, para?, n?, part?}, label?}], history:[{role, text, images:[编号], refs?, tools?:[标签]}], revealed:[已对过答案的题号]}` | SSE 流（见下「复习助手」）；题不在这次复习里 400、复习不存在 404、没配置 AI 400，都在开始流式之前返回 |
 | GET `/print/session` | `id, answers=1` | A4 打印页（自包含 HTML） |
 
 静态文件：`/`、`/clms.html`、`/assets/**`（弱 ETag + `no-cache`）。
@@ -70,15 +70,24 @@
 - `group=material`：按材料分组（默写按出处，其余单独成组），组顺序跟随组里排得最靠前的题，分页按组计：`groups:[{key, material_id, genre, title, author, source, created_at, size(这篇在库里共几题), items, stats:{total, mastered, new, leech, mastery}}]`。
 - `limit` 为空时不分页（Agent 的 `library_search` 依赖这一点）。
 
-### 复习助手（`clms/review_ai.py`）
+### 复习助手（`clms/review_ai.py`、`clms/review_tools.py`）
 
-`POST /api/review/ai` 回 `text/event-stream`，每条 `data: {json}`，15 秒一次 `: ping`：
+请求（v0.6）：
+
+- `refs`：学生在卷面上选中后「引用」的文字（最多 6 段、每段 400 字，空白压成一个空格）。`where` 是位置：原文给 `material_id` + `para`（段号），题目给 `n`（卷上题序）+ `part`（`stem` / `answer`）；服务端据此重新写位置标签，`label` 只在编号无效时兜底。只有引用、没写字的提问合法（默认问「解释一下我引用的这段。」）。
+- `history`：最近 16 轮。用户那几轮可带 `images`（已存的照片编号）和 `refs`；助手那几轮可带 `tools`（这一轮查阅过什么的标签，如「读《老街的灯》第 2-3 段」），服务端只把它写成一句说明，**不回传查到的内容**。
+- `revealed`：学生已经对过答案的题号列表（也兼容旧的布尔值，表示当前这道）；已评分的题一律视为已对过。
+
+回 `text/event-stream`，每条 `data: {json}`，15 秒一次 `: ping`。一条回答由若干**块**组成（思考 / 正文 / 工具），按出现顺序：
 
 | 事件 | 字段 |
 | --- | --- |
-| `start` | `images`（这次新上传的作答照片编号，按内容哈希存进 `images/`）、`mode` |
-| `delta` | `kind`（thinking / text）、`text` |
-| `done` | `reply`（去掉【建议】行的正文）、`suggestion`（`{grade, grade_label, note}` 的子集或 null）、`usage`、`timing` |
+| `start` | `images`（这次新上传的作答照片编号，按内容哈希存进 `images/`）、`mode`、`agent`（是否只读 Agent；设置里关掉 Agent 模式时为 false，不会有工具块） |
+| `block` | 开一个块：`id`、`kind`（thinking / text / tool）；工具块另有 `name`、`status: preparing` |
+| `delta` | `id`、`kind`、`text`：思考 / 正文逐字 |
+| `end` | `id`：思考 / 正文块结束（思考块据此计时、收起） |
+| `tool` | `id`、`status`（running / done / error）；running 时带 `name`、`label`（如「看第 3 题」）；结束时带 `summary`（如「2 段 · 157 字」）和 `result`（查到的内容，最多 2400 字，给学生展开看） |
+| `done` | `reply`（最终回答，去掉【建议】行）、`suggestion`（`{grade, grade_label, note}` 的子集或 null）、`usage`（这次各轮之和 `{input, output, estimated}`）、`tools`（查阅次数）、`timing`（`{seconds}`） |
 | `error` | `msg` |
 
 客户端断开（停止、离开页面）时服务端关闭生成器，停止信号让模型连接立即断开。助手不写 Ledger；采用建议由前端调 `/api/session/grade`、`/api/record/update`。
