@@ -4,7 +4,7 @@
 - 只扫描项目根目录的几个文件和 AI/、assets/、clms/、deploy/、tests/；数据目录（<vault>/语文/.clms：
   Ledger、草稿、原图、config.json）即使放在项目目录里也不会被扫描到。
 - 排除缓存、构建产物、隐藏文件、符号链接、日志、备份和之前导出的包。
-- 脱敏：文本文件里出现的当前 API Key（config.json 的 ai_api_key）和形如 sk-… 的密钥串替换成 <已脱敏>，
+- 脱敏：文本文件里的当前识别/助手 Key 和形如 sk-… / clms_mcp_… 的密钥串替换成 <已脱敏>，
   清单里记下哪些文件被替换过。
 """
 
@@ -17,14 +17,14 @@ import zipfile
 from .common import load_config
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROOT_FILES = {"AGENTS.md", "README.md", "clms.html", "clms_engine.py", "run.bat", "run.sh", ".gitignore"}
+ROOT_FILES = {"AGENTS.md", "README.md", "clms.html", "clms_engine.py", "run.bat", "run.sh", ".gitignore", "requirements-mcp.txt"}
 SOURCE_DIRS = {"AI", "assets", "clms", "deploy", "tests"}
 SOURCE_SUFFIXES = {".py", ".js", ".mjs", ".css", ".html", ".md", ".bat", ".sh", ".service", ".svg", ".woff2", ".txt"}
 BINARY_SUFFIXES = {".woff2", ".bcmap", ".pfb", ".ttf", ".wasm"}
 EXCLUDED_DIRS = {"__pycache__", ".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "dist",
-                 "语文", ".clms", "logs"}
-EXCLUDED_NAMES = {"config.json", "ledger.db"}
-SECRET_RE = re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}")
+                 "语文", ".clms", "logs", "essay_images", "images", "user_data", "drafts"}
+EXCLUDED_NAMES = {"config.json", "ledger.db", "mcp_keys.json", "assistant.db", "ai_review.db", "runtime.db"}
+SECRET_RE = re.compile(r"\b(?:sk-|clms_mcp_)[A-Za-z0-9_\-]{16,}")
 REDACTED = "<已脱敏>"
 
 
@@ -90,8 +90,9 @@ def create_source_export(vault: str, root: str = ROOT):
     included, excluded = source_files(root)
     if not included:
         raise ValueError("没有可导出的源码文件")
-    key = str(load_config(vault).get("ai_api_key") or "").strip() if vault else ""
-    secrets = [key] if len(key) >= 8 else []
+    config = load_config(vault) if vault else {}
+    secrets = [str(config.get(field) or "").strip() for field in ("ai_api_key", "assistant_api_key")]
+    secrets = [key for key in secrets if len(key) >= 8]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     filename = f"CLMS-source-sanitized-{stamp}.zip"
     redacted = []
@@ -118,7 +119,7 @@ def create_source_export(vault: str, root: str = ROOT):
             "按源码目录和文件类型从当前工作区收集文件，包括未提交的改动；不依赖 Git。",
             "只扫描根目录项目文件及 AI/、assets/、clms/、deploy/、tests/；",
             "不含数据目录（语文/.clms：Ledger、草稿、原图、config.json）、缓存、隐藏文件、符号链接、日志和导出包。",
-            "当前 API Key 与形如 sk-… 的密钥串已替换为 " + REDACTED + "。分享前仍请自行检查。", "",
+            "当前识别/助手 Key 与形如 sk-… / clms_mcp_… 的密钥串已替换为 " + REDACTED + "。分享前仍请自行检查。", "",
             f"导出时间（UTC）：{stamp}", f"文件数量：{len(included)}", f"跳过的文件 / 目录：{excluded}",
             "脱敏替换：" + ("；".join(redacted) if redacted else "无"), "", "包含文件：", *included]
         archive.writestr("CLMS/SOURCE_EXPORT_MANIFEST.txt", "\n".join(manifest) + "\n")

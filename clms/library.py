@@ -69,7 +69,7 @@ def list_items(vault: str, genre="", qtype="", status="", q="", sort="priority",
     needle = chinese_only(q) or (q or "").strip()
     deleted = status == "deleted"
     source = [state.item_view(i, ctx) for i in state.deleted] if deleted else state.all_items(ctx)
-    wanted = {"genre": genre, "qtype": qtype, "kind": kind, "added": added, "last": last, "grade": grade,
+    wanted = {"genre": genre, "qtype": "" if qtype == "__unclassified__" else qtype, "kind": kind, "added": added, "last": last, "grade": grade,
               "status": "" if deleted else status}
     show_suspended = include_suspended or deleted or status == "suspended"
     rows, facets = [], {name: {} for name in FACETS}
@@ -85,7 +85,7 @@ def list_items(vault: str, genre="", qtype="", status="", q="", sort="priority",
         values = _facet_values(item, today)
         if deleted:
             values["status"] = []
-        misses = [name for name, want in wanted.items() if want and want not in values[name]]
+        misses = [name for name, want in wanted.items() if (want or (name == "qtype" and qtype == "__unclassified__")) and want not in values[name]]
         for name in FACETS:
             if not misses or misses == [name]:
                 for value in values[name]:

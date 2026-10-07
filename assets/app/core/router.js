@@ -14,28 +14,29 @@ export function parseHash(hash) {
 export function createRouter({ win = globalThis.window, fallback = 'dashboard', onEnter } = {}) {
   const pages = new Map();
   let current = null;
+  let currentQuery = '';
   let started = false;
 
   const target = id => (pages.has(id) ? id : fallback);
-  const setHash = (id, replace) => {
-    const hash = `#/${id}`;
+  const setHash = (id, replace, query = '') => {
+    const hash = `#/${id}${query ? '?' + query : ''}`;
     if (win.location.hash === hash) return;
     win.history[replace ? 'replaceState' : 'pushState'](null, '', hash);
   };
-  const activate = id => {
-    if (id === current) return;
+  const activate = (id, query = '') => {
+    if (id === current && query === currentQuery) return;
     const prev = current;
-    current = id;
+    current = id; currentQuery = query;
     onEnter?.(pages.get(id), prev);
   };
 
   const api = {
     register(page) { pages.set(page.id, page); return api; },
     resolve(hash) { const r = parseHash(hash); return r && pages.has(r.id) ? r.id : fallback; },
-    go(id, { replace = false } = {}) {
+    go(id, { replace = false, query = '' } = {}) {
       const to = target(id);
-      setHash(to, replace);
-      activate(to);
+      setHash(to, replace, query);
+      activate(to, query);
       return to;
     },
     start() {
@@ -45,12 +46,13 @@ export function createRouter({ win = globalThis.window, fallback = 'dashboard', 
           const r = parseHash(win.location.hash);
           if (!r) { if (current) win.history.replaceState(null, '', `#/${current}`); return; }
           if (!pages.has(r.id)) { api.go(fallback, { replace: true }); return; }
-          activate(r.id);
+          activate(r.id, r.query);
         };
         win.addEventListener('popstate', onNavigate);
         win.addEventListener('hashchange', onNavigate);
       }
-      return api.go(api.resolve(win.location.hash), { replace: true });
+      const parsed = parseHash(win.location.hash);
+      return api.go(api.resolve(win.location.hash), { replace: true, query: parsed?.query || '' });
     },
     current: () => current,
     page: id => pages.get(id ?? current),

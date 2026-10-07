@@ -177,7 +177,7 @@ def index_text(vault: str, job: dict) -> str:
     item = state.items[job["item_id"]]
     ids = [e["id"] for e in sess["items"]]
     head = f"- 学生正在看：第 {ids.index(item['id']) + 1} 题（{item['id']}）· " \
-        f"{GENRE_BY_CODE.get(item['genre'], {}).get('name', item['genre'])} · {item.get('qtype') or '—'}"
+        f"{GENRE_BY_CODE.get(item['genre'], {}).get('name', item['genre'])} · {item.get('qtype') or '未分类'}"
     if isinstance(item.get("score"), (int, float)) and item["score"]:
         head += f" · {item['score']:g} 分"
     mat = state.materials.get(item.get("material_id") or "")

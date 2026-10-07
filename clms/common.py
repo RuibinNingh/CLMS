@@ -19,6 +19,10 @@ DEFAULT_CONFIG = {
     "ai_max_tokens": 16000,
     "ai_concurrency": 2,
     "ai_context_window": 128000,   # 模型上下文窗口（token），输入框的圆环按它算占用
+    "assistant_enabled": True,
+    "assistant_base_url": "",
+    "assistant_model": "",
+    "assistant_api_key": "",
     # Agent harness：录入对话直连工具调用的 Agent；模型不支持 function calling 时关掉，回到一次性识图 / 整份修订
     "ai_agent": True,
     "agent_subagents": 3,     # 大试卷委派子代理时同时跑几个
@@ -29,7 +33,10 @@ DEFAULT_CONFIG = {
     "session_minutes": 40,
     "theme": "light",
     "tuning": {},
-    "qtypes": {},            # 覆盖默认题型表：{genre_code: [题型, …]}
+    "qtypes": {},            # 用户题型表；空数组表示该板块尚未建立题型
+    "qtype_kinds": {},       # {genre_code: {题型: skill|recall}}
+    "qtype_initialized": False,  # 首次迁移标记，和默认空字典区分
+    "qtype_migration": {},   # 中断后重试重命名时识别迁移目标
 }
 
 _config_lock = threading.RLock()

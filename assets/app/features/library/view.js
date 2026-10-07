@@ -42,7 +42,7 @@ export function facets(s) {
     </section>`)}
     ${qtypes.length ? html`<section class="fct__grp fct__grp--qtype" data-key="qtype">
       <h3>题型${f.genre ? '' : html`<small>（选板块可细分）</small>`}</h3>
-      ${each(qtypes, x => x[0] || '-', ([value, n]) => option('qtype', value, value || '未分类', n, f.qtype))}
+      ${each(qtypes, x => x[0] || '-', ([value, n]) => option('qtype', value || '__unclassified__', value || '未分类', n, f.qtype))}
     </section>` : ''}
   </aside>`;
 }
@@ -77,7 +77,7 @@ function facts(it, s) {
 }
 
 /** 行首的一串说明：板块 · 第 N 题 · 题型 · 《篇名》 · 出处；按篇分组时篇名 / 出处已在卡片头上，省掉。 */
-const meta = (it, compact) => [compact ? '' : genreShort(it.genre), it.no ? `第 ${it.no} 题` : '', it.qtype || '',
+const meta = (it, compact) => [compact ? '' : genreShort(it.genre), it.no ? `第 ${it.no} 题` : '', it.genre === 'dictation' ? it.qtype : it.qtype || '未分类',
   !compact && it.material_title ? `《${it.material_title}》` : '', !compact && it.source ? it.source : ''].filter(Boolean).join(' · ');
 
 function row(it, s, { compact = false } = {}) {

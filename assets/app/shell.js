@@ -29,6 +29,7 @@ export function startShell(pages) {
       document.getElementById('page-title').textContent = page.title;
       document.title = `${page.title} · CLMS`;
       main.classList.toggle('is-workbench', Boolean(page.workbench));
+      if (page.id !== 'assistant') store.set({ assistantContext: null });
       const root = document.getElementById(`panel-${page.id}`);
       unmount = page.mount(root, ctx) || null;
       bus.emit('page:change', { id: page.id, prev });
@@ -54,6 +55,12 @@ export function startShell(pages) {
   };
   syncTheme();
   syncNav();
+  bus.on('theme:changed', syncTheme);
+  bus.on('nav:changed', syncNav);
+  bus.on('context', data => {
+    const fields = ['item_id', 'session_id', 'prompt_id', 'attempt_id', 'version_id'];
+    store.set({ assistantContext: Object.fromEntries(fields.filter(k => typeof data?.[k] === 'string').map(k => [k, data[k]])) });
+  });
   defineActions('app', {
     theme() {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';

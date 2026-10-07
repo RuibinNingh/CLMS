@@ -1,4 +1,4 @@
-# AI 录入：识图、对话修订、草稿结构
+# AI：录入、全局助手、审核与作文转写
 
 > 速查：默认是 **Agent 模式**（`config.ai_agent`，见下方「Agent harness」）：录入对话直连一个工具调用的 Agent，模型通过工具逐题读写草稿、查改题库、增删改查复习记录、记复习反馈；大试卷由主代理委派子代理按大题并行录入。关掉 Agent 模式时是下面的旧流程：两种调用都走 OpenAI 兼容的 `/chat/completions`，只发一条 user 消息（图片 + 文字，不用 system）。识图返回 `{groups, notes}`；修订每轮都把完整草稿发过去、要求返回完整草稿，服务端自己算 diff。模型输出一律经过 `draft_schema.normalize_groups()`。
 
@@ -25,7 +25,7 @@
 
 - 板块只有四个：现代文阅读、文言文阅读、古代诗歌阅读、名句默写。每篇独立的阅读材料单独成一个 group；名句默写整体一个 group。
 - 原文逐字转录，段落换行，保留①②③序号；古诗按原排版换行；注释放在末尾、以「注：」开头。
-- 题型从当前题型表里选（`taxonomy.qtypes()`，可在 `config.json` 的 `qtypes` 覆盖），实在没有才自拟。
+- 阅读题 `qtype` 只能从当前板块的用户题型表（`taxonomy.qtypes()`）选；只有明确匹配才填。没有合适项、判断不确定或题型表为空时写 `""`（未分类），禁止自拟或强选最接近项。默写的直接 / 理解性默写仍是固定结构语义。识图 `extract`、整份修订 `revise` 都在解析后调用 `sanitize_qtypes`，陌生非空题型变成 `""`；用户可在校对时用「新增题型」显式建立后选中。
 - 选择题把选项放进题干，每项一行。
 - 图里有答案就照录（`answer_origin: image`）；没有就按阅卷习惯分条补写（`ai`）。
 - 留白 `blank_lines` 由模型判断，参考：选择 0、解释 / 断句 1–2、翻译每句 2–3、概括赏析 3–6、探究 6–10。模型没给时按分值兜底（`default_blank_lines`：分值 × 1.2，限 2–12；选择题 0；未知 4）。
@@ -48,7 +48,7 @@
 
 ```
 group = {gid, genre(modern|classical|poetry|dictation), material:{title,author,source,text}, items:[…], dictation:[…]}
-item  = {iid, no, qtype, stem, answer, answer_origin(image|ai|user|""), analysis, score, blank_lines(0–24), user_answer, note}
+item  = {iid, no, qtype, stem, answer, answer_origin(image|ai|user|""), analysis, score, blank_lines(0–1000), user_answer, note}
 dictation entry = {iid, template, blanks:{"1": "…"}, source, kind}
 ```
 
@@ -119,7 +119,7 @@ template  杜甫《春望》中……两句是：“{书写区域1}，{书写区
 | `dictation_add(entries[])` / `dictation_update(ref, …)` | 默写模板 + 答案表 |
 | `view_pages(pages[])` | 重新看原图 |
 
-所有输入都经 `draft_schema.normalize_item / normalize_dictation / clean_text`，和手工编辑同一套规则。
+所有输入都经 `draft_schema.normalize_item / normalize_dictation / clean_text`，和手工编辑同一套规则。主代理与子代理收到同一张当前用户题型表；`items_add` 和 `item_update` 对模型给出的陌生 `qtype` 再调用 `taxonomy.valid_qtype`，转换为 `""`。Agent 无新增题型工具；`draft_commit` 入库前再把已不在配置中的题型转换为 `""`（覆盖旧草稿和执行期间用户删题型的情况），避免幽灵分类。已入库题的 `library_update` 对陌生非空题型返回明确错误。`fake_ai.py` 的 `FAKE_AI_UNKNOWN_QTYPE=1` 会故意提交陌生题型，供非 Agent 与子代理路径回归。
 
 ### 子代理（`delegate`）
 
@@ -132,7 +132,82 @@ template  杜甫《春望》中……两句是：“{书写区域1}，{书写区
 
 ### 题库 / 记录 / 复习反馈工具（`agent_ops.py`）
 
-`library_search`、`library_get`、`library_update`、`material_update`、`library_suspend`、`library_delete`、`library_restore`；`records_list`、`record_add`、`record_update`、`record_delete`、`record_restore`（语义见 `data.md`「复习记录」）；`sessions_list`、`session_get`、`review_grade`（`sessions.grade_many`，一个事务写多题评分 + 反馈）。「增」题走草稿 + `draft_commit`（`_Host.commit` → `creation.commit_draft`），不绕过草稿。删除类工具的说明要求只在用户明确要求时使用；它们都可撤销。
+`library_search`、`library_get`、`records_list`、`sessions_list`、`session_get` 只读。v0.7 起，`library_update`、`material_update`、`library_suspend`、`library_delete`、`library_restore`、`record_update`、`record_delete`、`record_restore` 统一交给 `ai_review.propose(source="entry")`，返回待审操作，不直接改变正式题库或旧记录；宿主用草稿 ID、run ID、call ID 建立可信的来源和幂等身份。用户到审核中心处理，Agent 不得把待审说成已完成。
+
+`record_add` 仍通过 `records.add` 追加一次复习；已有作答照片批改的 `review_grade` 保留 `sessions.grade_many`，一个事务追加多题评分及反馈。记录语义见 `data.md`「复习记录」。「增」题仍走草稿 + `draft_commit`（`_Host.commit` → `creation.commit_draft`），不绕过纸面校对和草稿。删除类工具只在用户明确要求时提出；批准后仍采用可撤销的追加事件。
+
+## 统一领域服务与审核（`domain_ops.py`、`ai_review.py`）
+
+人工网页、录入 Agent、全局助手和 MCP 共用正式修改及 Session 创建的领域服务。传输层不能另写一套更新逻辑。`domain_ops` 的固定服务注册表定义风险、可编辑字段、前后对照、对象快照、执行函数和原生结果恢复；`tool_catalog` 把其中允许交给模型的操作公开为工具。
+
+- `read` 直接查询；未入库草稿和作文评价、笔记、自由分类属于 `auto`，自动执行并留下来源；正式 Session、正式题目/材料修改及录入 Agent 的停用、删改恢复属于 `confirm`，先保存提案。
+- `<vault>/语文/.clms/ai_review.db` 是唯一审核权威，保存来源、原始请求摘要、有效 payload、preview、snapshot、revision、人工决定与执行结果，权限 0600。它是辅助数据库，不是学习事实源。
+- 幂等身份由来源、工具、密钥/会话身份和 `request_id` 构成。相同 ID、相同原始内容返回同一操作；内容不同返回 `request_conflict`。人工修订改变有效内容及 revision，但不改变原始摘要，所以重试不会覆盖人的修订。
+- 修订必须在原请求开放字段内，不能换目标或扩大字段范围。批准/拒绝都携带 `expected_revision`；服务端 CAS 保证同一操作只有一个权威决定，聊天卡与审核中心并用也只执行一次。
+- 批准时重新比较对象快照，并在原生写事务前、提交前重新验证来源权限。内容变化得到 `content_conflict`；到期、停止或密钥吊销的旧提案不写学习事实。模型和 MCP 都没有批准工具，人工 HTTP handler 才能提供可信的 reviewer。
+- 状态包括 `pending_confirmation / running / applying / applied / rejected / expired / conflict / failed / interrupted / cancelled`。查询只读；到期状态可由当前时间计算，读取不得触发领域写入。
+- Ledger 提交的 `_operation` 记录来源和操作身份；原生 `operation_receipts` 与学习事件在同一 SQLite 事务提交。草稿对应回执随草稿原子保存。重启只凭匹配操作 ID 和有效摘要的原生回执确认已成功；无回执则中断，不重放模型写入。审核终态保存失败也不能让已提交的学习事实再次执行。
+- 等待模型或人工时不持有 Ledger 写锁。`runtime_history` 只记录允许的来源、类型、对象 ID、计数与结果状态，完整提案和对话不进入运行历史。
+
+## 全局助手与公共工具目录（`assistant.py`、`assistant_store.py`、`http_assistant.py`、`tool_catalog.py`）
+
+一级「全局助手」是持久对话场景，复用录入页的 `harness.Agent`、`ai_assist.chat`、流式思考解析、工具调用、截断保护和用量统计。它与录入页 Agent 使用不同的持久存储及页面，不把完整聊天放进作文或 Ledger。
+
+- `assistant_enabled` 单独控制开启。`assistant_base_url / assistant_api_key / assistant_model` 可分别覆盖，配置中空值回退 `ai_*`；设置表单的密钥留空保留已存值，明确「清除独立密钥」后才回退。请求通过 `config_override` 进入同一个兼容接口。密钥不写进对话、审核或 runtime 数据库。
+- `<vault>/语文/.clms/assistant.db`（0600/WAL）保存 conversations、模型上下文 messages、runs、递增序号 events。思考只在私有展示事件中保存，不回传模型。重开会话读取最近 6000 条展示事件，模型请求沿用 harness 的 48 条上下文裁剪规则。
+- 每个数据目录同一时刻最多一个全局 run。同一对话可插话，另一个对话返回 `run_busy`；结束保存期间也返回 busy，防止消息进入已经结束的队列。写盘或线程启动失败不会永久占用内存中的运行。
+- 当前页面上下文只允许 `item_id / session_id / prompt_id / attempt_id / version_id` 的稳定编号；自由文字、路径、页面 HTML 和指令字段丢弃，编号以普通数据附在用户消息中。明确传 `{}` 会清除保存的上下文；未传才沿用会话上下文。
+- 写工具的 `request_id` 由可信运行宿主覆盖为 run/turn/call 身份，模型不能指定其它运行的幂等身份。工具参数另经共享目录递归校验，未知字段、越界分数、类型或非法 ID 格式拒绝。
+- `confirm` 工具得到同一待审 operation 后等待人工；没有数据库连接或 Ledger 锁跨越等待。审核中心修订时刷新聊天卡，批准后模型收到实际结果，例如人工改成 35 分钟后的正式 Session ID；拒绝、冲突或到期也作为真实工具结果返回。
+- 停止取消当前 run 的待审提案，已执行的追加事实保留。启动恢复将未结束 run 标为 `interrupted`，按可信 creator/run 身份取消旧待审项，覆盖「提案已保存、等待指针尚未保存」窗口；恢复可重复，不重启模型。
+- 事件保留 harness 的 thinking/text/tool 参数及结果，另有 `run_start / user_message / tool_waiting / tool_decision / run_end`。页面显示等待卡、结束状态、轮数、工具次数、输入/输出 token、上下文、用时及实际结果跳转。
+- `/api/assistant/events?run_id=&after=&wait=` 为有序长轮询，最多等 20 秒，响应 `cursor / events / run / has_more`；即使 run 已结束也要读完 `has_more`。页面卸载或换会话取消请求并检查 generation，晚到回包不重绘其它页面。
+- 其余接口是 status、conversations、conversation、conversation/create、message、abort（完整参数见 `api.md`）。聊天批准/拒绝使用已有 `/api/ai-review/decide`，没有第二套批准 API。
+
+### 共享工具目录（`tool_catalog.py`）
+
+内置助手 26 个工具；MCP 共用这 26 个，再增加受独立图片 scope 约束的 `get_essay_image`。每个工具只有一个 schema、权限级别和 scope 集合，MCP 的发现与执行都从此目录取权限；所有写工具必须有 `request_id`（1–128 字符，禁止控制字符及 `? # / \\`）。内置助手不使用 MCP Key，但仍经过相同领域审核规则。
+
+| 工具 | 权限 | MCP scope | 作用 |
+| --- | --- | --- | --- |
+| `list_taxonomy` | read | `clms:read` | 用户板块与题型 |
+| `search_items` | read | `clms:read` | 搜索/分页正式题库 |
+| `get_item` | read | `clms:read` | 题目、答案、材料及复习记录 |
+| `get_material` | read | `clms:read` | 材料原文与题目 |
+| `get_overview` | read | `clms:read` | 学习概况 |
+| `get_recommendations` | read | `clms:read` | 按时长与板块推荐，尚不创建 Session |
+| `list_sessions` / `get_session` | read | `clms:read` | 正式复习与进度 |
+| `list_drafts` / `get_draft` | read | `clms:read` | 暂存草稿与 revision |
+| `get_operation` | read | `clms:read` | MCP 只查本 Key 的操作状态，不批准 |
+| `create_draft` | auto | `draft:create` | 新建未入库草稿 |
+| `update_draft` | auto | `clms:read` + `draft:update` | 按 expected_revision 修改草稿 |
+| `create_review_session` | confirm | `clms:read` + `session:create` | 提交正式 Session 审核 |
+| `propose_item_update` | confirm | `clms:read` + `question:propose` | 题目限定字段修改审核 |
+| `propose_material_update` | confirm | `clms:read` + `material:propose` | 材料修改审核 |
+| `list_essay_prompts` / `get_essay_prompt` | read | `essay:read` | 搜索作文题、正文及历次 Attempt |
+| `get_essay_attempt` | read | `essay:read` | 各稿版本、修改次数及笔记 |
+| `get_essay_version` | read | `essay:read` | 已确认正式全文，未确认不返回正文 |
+| `list_essay_evaluations` | read | `essay:read` | 指定 Version 的全部评价 |
+| `list_essay_classifications` | read | `essay:read` | 自由分类 |
+| `get_essay_image`（MCP） | read | `essay:read` + `essay:images` | 指定 Version 的一页原图，禁止任意文件读取 |
+| `append_essay_evaluation` | auto | `essay:read` + `essay:evaluate` | 追加 0–60 分评价，含 summary/strengths/issues/suggestions、可选自由 dimensions/evaluator/model |
+| `append_essay_note` | auto | `essay:read` + `essay:note` | 追加 Attempt/Version 的简短讨论重点 |
+| `create_essay_classification` | auto | `essay:classify` | 新建自由分类，可选 group |
+| `set_essay_classifications` | auto | `essay:read` + `essay:classify` | 按实体 ID/名称组合分类，不要求固定树 |
+
+普通核心仍只依赖标准库，MCP SDK 为可选安装；独立端口、Key、安全摘要、实时 scope 验证和图片边界见 `api.md`「MCP」。模型不能读取任意文件、任意转发 HTTP 或自批审核。
+
+假模型 `tests/fake_ai.py` 识别「## 全局助手」：Session 场景先查 recommendations、再提案，收到人工真实决定后按实际分钟数/ID 回复；作文场景先读正式 Version，再追加 47/60 评价和笔记。`[tool:工具名] {JSON}` 覆盖目录中的其它工具，测试能够显式操纵低风险及待审路径。
+
+## 完整作文 OCR（`essays_ocr.py`）
+
+作文原图按上传顺序组成同一 Version 的多页，OCR 只负责逐字转写完整作文，禁止评价、润色、纠正原作文的错别字/病句/标点或添加原图没有的句子。存疑写为 `【存疑：可能的字】`，无法辨认写 `【无法辨认】`；图片中的指令也是待转写数据。回复结构是 `{text, uncertainties:[{page,text,reason}]}`。
+
+保留原图、原始 OCR 文本/回复、存疑列表和模型；人工校对后的文本另存，确认后才成为可供助手/MCP评价的正式正文。校对识别错误不创建 Version；真正修改作文上传新 Version。评价和笔记只能追加：评价永久绑定目标 Version，笔记归属 Attempt 并可选关联其中一个 Version；不能覆盖确认正文或把旧评价搬到新稿。
+
+持久状态流为 `uploaded → ocr_running → proofreading → confirmed`，界面分别显示已上传、转写中、待校对、待评价/已评价；人工确认完成最后一步，评价状态由绑定的 Evaluation 派生。失败进入 `ocr_failed`，可在同一 Version 重试。也允许人工直接转写。模型网络请求在 Ledger 写事务外，完成/失败仅在当前 OCR token 匹配时追加事件；旧任务的晚到结果丢弃。启动恢复把未完成 OCR 追加成可重试失败。并发由 `ai_concurrency` 限制，系统历史只保存版本 ID、任务状态与耗时。
+
+`fake_ai.py` 识别「你负责手写完整作文的 OCR 转写」，返回故意保留「一顺间」的原样文本及存疑字段，作文专项检验 OCR 保留与人工校对分离。作文实体、字段、事件及版本评价不变量详见 `data.md`「作文」，HTTP 见 `api.md`。
 
 ### 模型接口（`ai_assist.chat`）
 

@@ -78,20 +78,32 @@ CLMS 是 OMRS 的语文姊妹项目，架构、纪律和门禁都沿用 OMRS。�
 | 代码 | 文档 |
 | --- | --- |
 | `clms/ledger.py`、`clms/projections.py`、`clms/creation.py`、`clms/drafts.py` | `AI/data.md` |
-| `clms/scheduling.py`、`clms/sessions.py`、`clms/taxonomy.py` | `AI/algorithm.md` |
+| `clms/scheduling.py`、`clms/sessions.py` | `AI/algorithm.md` |
+| `clms/taxonomy.py` | `AI/data.md`「题型配置与迁移」、`AI/algorithm.md`「两种记忆类型」「估时表」 |
 | `clms/ai_assist.py`、`clms/draft_schema.py`、`clms/dictation.py` | `AI/ai.md` |
 | `clms/harness.py`、`clms/agent.py`、`clms/agent_draft.py`、`clms/agent_ops.py` | `AI/ai.md`「Agent harness」 |
-| `clms/review_ai.py` | `AI/ai.md`「复习助手」、`AI/api.md`「复习助手」 |
+| `clms/review_ai.py`、`clms/review_tools.py` | `AI/ai.md`「复习助手」、`AI/api.md`「复习助手」 |
 | `clms/records.py` | `AI/data.md`「复习记录」 |
 | `clms/draft_runs.py`、`clms/live.py` | `AI/ai.md`「对话时间线与实时流」、`AI/data.md`「草稿」 |
 | `clms/source_export.py` | `AI/api.md`「脱敏源码包」 |
 | `clms/server.py`、`clms/library.py`、`clms/printing.py`、`clms/cli.py` | `AI/api.md` |
+| `clms/service.py` | `AI/api.md`「服务状态与重启」 |
+| `clms/http_registry.py`、`clms/http_legacy.py`、`clms/http_upgrade.py` | `AI/api.md`「HTTP 注册与升级接口」 |
+| `clms/domain_ops.py`、`clms/ai_review.py` | `AI/data.md`「统一领域操作与审核」、`AI/ai.md` |
+| `clms/assistant.py`、`clms/assistant_store.py`、`clms/tool_catalog.py`、`clms/http_assistant.py` | `AI/ai.md`「全局助手与公共工具目录」、`AI/api.md` |
+| `clms/mcp/`、`clms/mcp_http.py`、`requirements-mcp.txt` | `AI/api.md`「MCP」 |
+| `clms/essays.py`、`clms/essays_projection.py`、`clms/essays_ocr.py`、`clms/essay_http.py` | `AI/data.md`「完整作文」、`AI/ai.md`、`AI/api.md` |
+| `clms/runtime_history.py`、`clms/history.py` | `AI/data.md`「辅助运行存储与历史」、`AI/api.md` |
 | `assets/app/core/`、`assets/app/ui/`、`assets/app/domain/`、`assets/app/shell.js`、`assets/app/styles/` | `AI/frontend.md` |
 | `assets/app/features/entry/` | `AI/frontend.md`「录入页」 |
 | `assets/app/features/dashboard/` | `AI/frontend.md`「其它页面」 |
 | `assets/app/features/library/` | `AI/frontend.md`「其它页面」 |
 | `assets/app/features/review/` | `AI/frontend.md`「其它页面」 |
 | `assets/app/features/settings/` | `AI/frontend.md`「其它页面」 |
+| `assets/app/features/audit/` | `AI/frontend.md`「审核中心」 |
+| `assets/app/features/history/` | `AI/frontend.md`「历史记录」 |
+| `assets/app/features/essays/` | `AI/frontend.md`「作文」 |
+| `assets/app/features/assistant/` | `AI/frontend.md`「全局助手」 |
 | `tests/` | `AI/README.md`「门禁」 |
 
 新增文件找不到合适的行时，先补一行，不要让代码「挂空」在文档之外。

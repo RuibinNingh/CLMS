@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fake_ai  # noqa: E402
 from clms.common import save_config  # noqa: E402
 from clms.server import make_server  # noqa: E402
+from test_core import seed_types  # noqa: E402
 
 
 def make_images(folder):
@@ -50,6 +51,7 @@ def run(shots=None):
     vault = tempfile.mkdtemp(prefix="clms-e2e-")
     ai = fake_ai.start(0)
     save_config(vault, {"ai_base_url": f"http://127.0.0.1:{ai.server_address[1]}/v1", "ai_api_key": "k", "ai_model": "fake"})
+    seed_types(vault)
     server = make_server(vault, "127.0.0.1", 0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
@@ -69,6 +71,14 @@ def run(shots=None):
             pg.on("console", lambda m: m.type in ("error", "warning") and errors.append(f"{m.type}: {m.text}"))
             pg.on("response", lambda r: r.status >= 400 and errors.append(f"HTTP {r.status} {r.request.method} {r.url}"))
 
+            pg.goto(base + "/#/settings")
+            pg.click('[data-action="set.section"][data-arg="review"]')
+            pg.wait_for_selector('[data-testid="taxonomy-settings"]')
+            pg.click('.set__taxgroup[data-key="modern"] [data-action="set.taxEdit"][data-mode="add"]')
+            pg.fill('.set__taxgroup[data-key="modern"] .set__taxedit input[name="name"]', '叙述视角题')
+            pg.click('.set__taxgroup[data-key="modern"] .set__taxedit button[type="submit"], .set__taxgroup[data-key="modern"] .set__taxedit button.btn--primary')
+            pg.wait_for_selector('.set__taxgroup[data-key="modern"] li:has-text("叙述视角题")')
+            os.environ["FAKE_AI_UNKNOWN_QTYPE"] = "1"
             pg.goto(base + "/#/entry")
             pg.wait_for_selector(".launch")
             shot(pg, "01-empty.png")
@@ -95,8 +105,11 @@ def run(shots=None):
             pg.wait_for_selector(".chat .composer__box", timeout=15000)           # 输入框落到对话底部
             pg.wait_for_selector('.tl__item[data-role="user"].is-enter')
             pg.wait_for_function("document.querySelectorAll('.hrow[data-tone=\"ready\"]').length === 3", timeout=60000)
+            os.environ.pop("FAKE_AI_UNKNOWN_QTYPE", None)
             pg.click('.hrow:has-text("老街的灯") .hrow__main')
             pg.wait_for_selector('.grp[data-genre="modern"]')
+            assert pg.locator('.grp[data-genre="modern"] .qtype--empty').count() == 1
+            assert pg.locator('.grp[data-genre="modern"] .qtype option:checked:has-text("意象作用题")').count() == 1
             assert pg.locator(".tl .blk--thinking").count() >= 2
             assert pg.locator('.blk--tool[data-tool="delegate"] .task[data-status="done"]').count() == 2
             pg.click('.blk--tool[data-tool="delegate"] .task__head >> nth=0')
@@ -238,6 +251,9 @@ def run(shots=None):
             assert planned == 7 + pinned_jys, planned                               # 静夜思今天刚补记过：提前复习时跳过（除非是自选）
             shot(pg, "05a-plan.png", full_page=True)
             pg.click('[data-action="rv.create"]')
+            pg.wait_for_selector('#review-print-frame')                            # 创建后先 A4 预览
+            pg.wait_for_function("document.querySelector('#review-print-frame').contentWindow.clmsPrint?.ready")
+            pg.click('[data-action="rv.printStart"]')
             pg.wait_for_selector(".rv-q")                                           # 评分：一次一道题，左边答题卡
             assert pg.get_attribute(".rv-nav__row >> nth=0", "aria-current") == "step"
             pg.click('[data-action="rv.reveal"]')
@@ -333,7 +349,14 @@ def run(shots=None):
             pg.wait_for_selector('.blk--tool[data-tool="library_suspend"][data-status="done"]', timeout=30000)
             pg.wait_for_selector('.blk--run[data-status="done"]', timeout=30000)
             pg.click('.blk--tool[data-tool="library_suspend"] > .blk__head')
-            assert "Q-000003 已停用" in pg.inner_text(".chat__log")
+            assert "待人工审核" in pg.inner_text(".chat__log")
+            pg.goto(base + "/#/audit")
+            pg.click('[data-action="audit.open"]')
+            pg.wait_for_selector('[data-action="audit.decide"][data-arg="approve"]')
+            pg.click('[data-action="audit.decide"][data-arg="approve"]')
+            pg.wait_for_selector('.workspace__detail .chip:has-text("已执行")')
+            from clms.library import item_detail
+            assert item_detail(vault, "Q-000003")["suspended"]
 
             pg.goto(base + "/#/dashboard")
             pg.wait_for_selector(".hero")
@@ -343,8 +366,35 @@ def run(shots=None):
             pg.click('[data-action="app.theme"]')
 
             pg.goto(base + "/#/settings")
-            pg.wait_for_selector('[data-testid="source-export"]')
+            pg.click('[data-action="set.section"][data-arg="review"]')
+            pg.wait_for_selector('[data-testid="taxonomy-settings"]')
+            pg.click('.set__taxgroup[data-key="modern"] li:has-text("意象作用题") [data-mode="rename"]')
+            pg.fill('.set__taxgroup[data-key="modern"] .set__taxedit input[name="name"]', '灯意象题')
+            pg.click('.set__taxgroup[data-key="modern"] .set__taxedit .btn--primary')
+            pg.wait_for_selector('.set__taxgroup[data-key="modern"] li:has-text("灯意象题")')
+            pg.goto(base + "/#/library")
+            pg.wait_for_selector('.row:has-text("灯意象题")')
+            pg.goto(base + "/#/settings")
+            pg.click('[data-action="set.section"][data-arg="review"]')
+            pg.wait_for_selector('[data-testid="taxonomy-settings"]')
+            pg.click('.set__taxgroup[data-key="modern"] li:has-text("灯意象题") [data-mode="delete"]')
+            pg.wait_for_selector('.set__taxedit select[name="replace_with"]')
+            pg.select_option('.set__taxedit select[name="replace_with"]', '')
+            pg.click('.set__taxedit .btn--danger')
+            pg.wait_for_function("!document.querySelector('.set__taxgroup[data-key=\"modern\"]').innerText.includes('灯意象题')")
+            pg.goto(base + "/#/library")
+            pg.click('[data-action="lib.group"][data-arg="item"]')
+            pg.wait_for_selector('.fct__opt[data-arg="qtype:__unclassified__"]')
+            pg.click('.fct__opt[data-arg="qtype:__unclassified__"]')
+            pg.wait_for_function("document.querySelector('.lib__count')?.innerText.includes('共 2 题')")
+            pg.reload()
+            pg.wait_for_function("document.querySelectorAll('.row:has(.row__meta)').length >= 2")
+            assert pg.locator('.row:has-text("未分类")').count() >= 2
+            pg.goto(base + "/#/settings")
+            pg.click('[data-action="set.section"][data-arg="ai"]')
             assert pg.is_checked('input[name="ai_agent"]')
+            pg.click('[data-action="set.section"][data-arg="data"]')
+            pg.wait_for_selector('[data-testid="source-export"]')
             with pg.expect_download() as info:
                 pg.click('[data-testid="source-export"]')
             assert info.value.suggested_filename.startswith("CLMS-source-sanitized-"), info.value.suggested_filename
@@ -377,10 +427,31 @@ def run(shots=None):
             shot(mp, "09b-mobile-review.png")
             from e2e_pdf import check_pdf
             check_pdf(browser, base, vault, images, shots)
+            mp.goto(base + "/#/settings")
+            mp.click('[data-action="set.section"][data-arg="review"]')
+            mp.wait_for_selector('[data-testid="taxonomy-settings"]')
+            assert mp.evaluate("document.documentElement.scrollWidth") <= 390
+            shot(mp, "10b-mobile-taxonomy.png", full_page=True)
+            pg.goto(base + "/#/entry")
+            pg.select_option('.hist__manual', 'modern')
+            pg.wait_for_selector('.grp[data-genre="modern"] .qtype')
+            pg.select_option('.grp[data-genre="modern"] .qtype', '__add__')
+            pg.wait_for_selector('.qtype__add input[name="name"]')
+            pg.fill('.qtype__add input[name="name"]', '辨析题')
+            pg.click('.qtype__add .btn--primary')
+            pg.wait_for_function("document.querySelector('.qtype')?.value === '辨析题'")
+            pg.wait_for_function("document.querySelector('.sheet__rev')?.innerText.includes('已保存')")
+            quick_draft = pg.get_attribute('.hrow.is-active', 'data-key')
+            pg.reload()
+            pg.click(f'.hrow[data-key="{quick_draft}"] .hrow__main')
+            pg.wait_for_function("document.querySelector('.qtype')?.value === '辨析题'")
+            pg.wait_for_timeout(800)  # 等页面切换动效结束后再留图，避免中间帧重影
+            shot(pg, "10c-entry-quick-qtype.png")
             browser.close()
         assert not errors, errors
         print("e2e 主路径通过")
     finally:
+        os.environ.pop("FAKE_AI_UNKNOWN_QTYPE", None)
         server.shutdown()
         server.server_close()
         ai.shutdown()

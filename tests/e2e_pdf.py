@@ -87,6 +87,7 @@ def check_pdf(browser, base, folder, images, shots=None):
             pg.click('.hist-toggle')
             pg.click('.hist [data-action="entry.fresh"]')
         pg.wait_for_selector('.launch:not(:has(.launch__pages))')
+        pg.wait_for_function("document.activeElement?.id === 'composer'")  # fresh() 动画完成后才聚焦，避免测试填字时被清空
 
     # 放慢真正的逐页上传，让观察窗口稳定；转换本身没有用假数据代替。
     def slow_upload(route):

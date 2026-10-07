@@ -5,6 +5,7 @@
 @import url("ui.css") layer(ui);
 @import url("shell.css") layer(shell);
 @import url("../domain/paper.css") layer(domain);
+@import url("../domain/workspace.css") layer(domain);
 @import url("../features/dashboard/dashboard.css") layer(features);
 @import url("../features/entry/entry.css") layer(features);
 @import url("../features/entry/canvas.css") layer(features);
@@ -20,3 +21,5 @@
 @import url("../features/review/grading.css") layer(features);
 @import url("../features/review/assistant.css") layer(features);
 @import url("../features/settings/settings.css") layer(features);
+@import url("../features/essays/essays.css") layer(features);
+@import url("../features/assistant/assistant.css") layer(features);

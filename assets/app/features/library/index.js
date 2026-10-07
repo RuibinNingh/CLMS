@@ -30,7 +30,7 @@ export const page = {
   id: 'library', title: '题库', icon: 'library',
   mount(root, { bus, store, router }) {
     const s = { filter: { ...saved.filter }, group: saved.group, tab: saved.tab, items: [], groups: [], counts: {}, facets: {},
-      total: 0, totalGroups: 0, libraryTotal: 0, deletedCount: 0, selected: saved.selected, detail: null, editing: false,
+      total: 0, totalGroups: 0, libraryTotal: 0, deletedCount: 0, selected: new URLSearchParams(location.hash.split('?')[1] || '').get('item') || saved.selected, detail: null, editing: false,
       loading: true, taxonomy: null, today: '', showVoided: false, noteFor: null, selecting: false, picked: new Set(),
       facetsOpen: false, hist: { ...saved.hist, records: [], total: 0, loading: true } };
     let alive = true; let searchTimer = 0; let seq = 0; let histSeq = 0;
@@ -75,6 +75,8 @@ export const page = {
     async function openDetail(id) {
       s.selected = id; saved.selected = id; s.editing = false; s.noteFor = null;
       const res = await get(`/api/item?id=${encodeURIComponent(id)}`);
+      if (!alive || s.selected !== id) return;
+      bus.emit('context', { item_id: id, material_id: res.data?.material_id || null });
       s.detail = res.ok ? res.data : null;
       if (!res.ok) { s.selected = null; saved.selected = null; }
       render();

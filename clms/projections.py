@@ -8,9 +8,10 @@
 import threading
 
 from . import ledger
+from .essays_projection import EssayProjection
 from .common import chinese_only, content_chars, short_hash, today as today_fn
 from .scheduling import derive, load_tuning, review_weekdays
-from .taxonomy import memory_kind
+from .taxonomy import memory_kind, qtype_kinds
 
 
 def material_key(text: str):
@@ -35,8 +36,9 @@ def item_key(material_id: str, stem: str):
     return f"item:{material_id}:{short_hash(chars)}" if (material_id and chars) else None
 
 
-class State:
+class State(EssayProjection):
     def __init__(self):
+        self._init_essays()
         self.materials = {}
         self.items = {}
         self.sessions = {}
@@ -117,7 +119,7 @@ class State:
                                        "draft_id": p.get("draft_id", "")})
 
     def _on_item_update(self, p, c):
-        item = self.items.get(p.get("item_id"))
+        item = self.items.get(p.get("item_id")) or self.deleted.get(p.get("item_id"))
         if not item:
             return
         old_key = item.get("key")
@@ -217,7 +219,7 @@ class State:
             return None
         events = [e for e in item["events"]]
         sched = derive(item["created_at"], events, ctx["weekdays"], ctx["today"], ctx["tuning"],
-                       memory_kind(item["genre"], item.get("qtype", "")))
+                       memory_kind(item["genre"], item.get("qtype", ""), kinds=ctx.get("qtype_kinds", {})))
         mat = self.materials.get(item.get("material_id") or "")
         view = {k: v for k, v in item.items() if k != "events"}
         view["sched"] = sched
@@ -250,4 +252,5 @@ def reset_state(vault: str):
 
 
 def context(vault: str) -> dict:
-    return {"weekdays": review_weekdays(vault), "today": today_fn(), "tuning": load_tuning(vault)}
+    return {"vault": vault, "qtype_kinds": qtype_kinds(vault), "weekdays": review_weekdays(vault),
+            "today": today_fn(), "tuning": load_tuning(vault)}

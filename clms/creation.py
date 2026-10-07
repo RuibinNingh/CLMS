@@ -12,6 +12,7 @@ from . import dictation as dict_mod
 from . import ledger
 from .draft_schema import count_units, issues
 from .projections import get_state, item_key, material_key
+from .taxonomy import DICTATION_TYPES, guard_qtype_writes, valid_qtype
 
 EDITABLE = {"qtype", "stem", "answer", "answer_origin", "analysis", "score", "blank_lines",
             "user_answer", "note", "no", "source"}
@@ -51,10 +52,14 @@ def annotate(vault: str, groups: list) -> dict:
     return result
 
 
+@guard_qtype_writes
 def commit_draft(vault: str, draft: dict, groups: list) -> dict:
     problems = issues(groups)
     if problems:
         raise ValueError("草稿还有问题没解决：" + "；".join(p["message"] for p in problems[:3]))
+    for group in groups:
+        for item in group.get("items", []):
+            item["qtype"] = valid_qtype(vault, group["genre"], item.get("qtype"))
     images = draft.get("images") or []
 
     def build(tx):
@@ -131,14 +136,26 @@ def commit_draft(vault: str, draft: dict, groups: list) -> dict:
     return result
 
 
-def update_item(vault: str, item_id: str, changes: dict) -> dict:
-    state = get_state(vault)
-    item = state.items.get(item_id)
+def prepare_item_changes(vault: str, item_id: str, changes: dict, state=None) -> dict:
+    """共享修改校验；调用方在实际事务内复核，打印批量修改复用相同规则。"""
+    state = state if state is not None else get_state(vault)
+    item = state.items.get(item_id) or state.deleted.get(item_id)
     if not item:
         raise KeyError("找不到这道题：" + item_id)
     clean = {k: v for k, v in (changes or {}).items() if k in EDITABLE}
+    if "qtype" in clean:
+        clean["qtype"] = str(clean["qtype"] or "").strip()
+        if item["genre"] == "dictation" and clean["qtype"] not in DICTATION_TYPES:
+            raise ValueError("默写类型只能是直接默写或理解性默写")
+        if item["genre"] != "dictation" and clean["qtype"] and not valid_qtype(vault, item["genre"], clean["qtype"]):
+            raise ValueError("题型不在当前板块的用户题型表中；没有合适题型时请设为空字符串")
+    if item_id in state.deleted and set(clean) != {"qtype"}:
+        raise ValueError("已删除的题只允许在题型迁移时修改题型")
     if "blank_lines" in clean:
-        clean["blank_lines"] = max(0, min(24, int(clean["blank_lines"] or 0)))
+        value = clean["blank_lines"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1000:
+            raise ValueError("留白行数必须是 0–1000 的整数")
+        clean["blank_lines"] = value
     if not clean:
         raise ValueError("没有可修改的字段")
     new_key = None
@@ -151,8 +168,18 @@ def update_item(vault: str, item_id: str, changes: dict) -> dict:
     payload = {"item_id": item_id, "changes": clean}
     if new_key:
         payload["key"] = new_key
+    return payload
+
+
+@guard_qtype_writes
+def update_item(vault: str, item_id: str, changes: dict) -> dict:
     from .sessions import describe
-    return ledger.append_commit(vault, "library", "item.update", f"修改 {describe(state, item_id)}", payload)
+    def build(tx):
+        state = get_state(vault)
+        payload = prepare_item_changes(vault, item_id, changes, state)
+        return tx.append("library", "item.update", f"修改 {describe(state, item_id)}", payload)
+    result, _ = ledger.transact(vault, build)
+    return result
 
 
 def update_material(vault: str, material_id: str, changes: dict) -> dict:

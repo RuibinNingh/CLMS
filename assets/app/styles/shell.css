@@ -1,5 +1,5 @@
 /* 外壳：左侧导航 + 右侧页面。录入页是工作台（整屏高，内部分栏各自滚动），其余页面正常滚动。 */
-.app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns var(--dur-3) var(--ease-out); }
+.app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100dvh; transition: grid-template-columns var(--dur-3) var(--ease-out); }
 .sidebar__row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-1); }
 .theme-toggle { justify-content: flex-start; gap: var(--sp-2); }
 .theme-toggle svg, .nav-toggle svg { width: 15px; height: 15px; }
@@ -15,7 +15,7 @@
   [data-nav="mini"] .nav-toggle svg { transform: scaleX(-1); }
 }
 .sidebar {
-  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: var(--sp-6);
+  position: sticky; top: 0; height: 100dvh; display: flex; flex-direction: column; gap: var(--sp-6);
   padding: var(--sp-5) var(--sp-3); border-right: 1px solid var(--border-1); background: var(--surface-1);
   z-index: var(--z-sidebar);
 }
@@ -34,7 +34,7 @@
   display: flex; align-items: center; gap: var(--sp-2); height: var(--ctl-md); padding: 0 var(--sp-2);
   border-radius: var(--r-sm); color: var(--fg-2); text-decoration: none; font-size: var(--text-sm);
 }
-.nav a:hover { background: var(--surface-2); color: var(--fg-1); }
+@media (hover: hover) and (pointer: fine) { .nav a:hover { background: var(--surface-2); color: var(--fg-1); } }
 .nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: var(--weight-medium); }
 .nav a svg { width: 17px; height: 17px; flex: none; }
 .nav .nav__badge { margin-left: auto; font-size: var(--text-2xs); color: var(--fg-3); }
@@ -46,7 +46,7 @@
 .topbar h1 { font-size: var(--text-xl); font-weight: var(--weight-semibold); }
 .panel { display: none; padding: var(--sp-4) var(--sp-6) var(--sp-8); }
 .panel.is-active { display: block; }
-.main.is-workbench { height: 100vh; overflow: hidden; }
+.main.is-workbench { height: 100dvh; overflow: hidden; }
 .main.is-workbench .topbar { display: none; }
 .main.is-workbench .panel.is-active { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; }
 
@@ -61,5 +61,7 @@
   .nav { display: flex; gap: var(--sp-1); }
   .nav a { padding: 0 var(--sp-2); }
   .topbar, .panel { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  .main.is-workbench { height: calc(100vh - 57px); }
+  .main.is-workbench { height: calc(100dvh - 57px); }
 }
+
+@media (max-width:760px) { .sidebar { padding-top: calc(var(--sp-2) + env(safe-area-inset-top, 0px)); } .panel { padding-bottom: calc(var(--sp-8) + env(safe-area-inset-bottom, 0px)); } }

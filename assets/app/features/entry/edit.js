@@ -35,7 +35,7 @@ export function setField(groups, path, value) {
   } else if (field === 'score') {
     entry.score = value === '' ? null : Number(value);
   } else if (field === 'blank_lines') {
-    entry.blank_lines = Math.max(0, Math.min(24, Number(value) || 0));
+    entry.blank_lines = Math.max(0, Math.min(1000, Number(value) || 0));
   } else {
     entry[field] = value;
     if (field === 'answer') entry.answer_origin = 'user';

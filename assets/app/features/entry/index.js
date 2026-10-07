@@ -23,15 +23,14 @@ import { createRate } from './gauge.js';
 import { bindListeners } from './listeners.js';
 import { fileImports } from './imports.js';
 import { pageManager } from './page-manager.js';
+import { qtypeActions } from './qtype.js';
+import { reduceMotion, wide, stored, localDay } from './environment.js';
 import { addGroup, addItem, clone, insertBlank, parsePath, removeEntry, setField, stepLines } from './edit.js';
 
 let lastActive = null;
 const remembered = { view: 'all', q: '' };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-const wide = () => window.matchMedia?.('(min-width: 1501px)').matches;
-const stored = key => { try { return localStorage.getItem(key); } catch (_) { return null; } };
-const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
 
 export const page = { id: 'entry', title: '录入', icon: 'entry', workbench: true, mount };
 
@@ -42,7 +41,7 @@ function mount(root, { bus, store }) {
     drafts: [], counts: {}, total: 0, view: remembered.view, q: remembered.q, limit: 60, today: localDay(),
     aiReady: true, activeId: lastActive, draft: null, working: null, pane: 'draft', tab: 'chat', histOpen: false,
     composer: '', withImage: true, attach: [], dragging: false, dragPage: null, flash: null, expanded: new Set(),
-    opened: new Set(), zoom: false, taxonomy: null, saving: false, dirty: false, seen: 0, open: new Map(),
+    opened: new Set(), zoom: false, taxonomy: null, addQtype: null, saving: false, dirty: false, seen: 0, open: new Map(),
     renaming: null, starting: false, liveSeq: 0, heroText: '', split: false, known: new Set(), liveTps: 0,
     histCollapsed: stored('clms-hist') === 'collapsed',
   };
@@ -218,11 +217,12 @@ function mount(root, { bus, store }) {
     await flush();
     const mine = ++openSeq;                              // 打开以最后一次为准；后台刷新不会打断它
     const res = await get(`/api/draft?id=${encodeURIComponent(id)}`);
-    if (mine !== openSeq) return;
+    if (!alive || mine !== openSeq) return;
     if (!res.ok) { toast(res.error.message, { tone: 'bad' }); return; }
     const change = Boolean(s.draft) !== true || s.draft.status === 'staged' || res.data.status === 'staged' || fromHero;
     const apply = () => {
       closeStream?.(); closeStream = null; streamId = null;
+      bus.emit('context', { draft_id: id });
       s.activeId = id; lastActive = id; s.draft = null; s.tab = 'chat'; s.histOpen = false; s.renaming = null;
       applyDraft(res.data);
       if (fromHero) s.known = new Set();              // 从开始界面过来：第一条消息也要入场
@@ -270,8 +270,10 @@ function mount(root, { bus, store }) {
   }
 
   const managed = manageActions({ s, root, render, refreshList, open, fresh, post, toast, confirmDialog, applyDraft, poll });
+  const qtype = qtypeActions({ s, post, toast, render, edit, focus: selector => { focusAfter = selector; } });
   const actions = {
     ...managed,
+    ...qtype.actions,
     ...manager.actions,
     pageAdd: pickFiles,
     importRetry: imports.retry,
@@ -304,6 +306,7 @@ function mount(root, { bus, store }) {
       s.histOpen = !s.histOpen; render();
     },
     field({ el, event }) {
+      if (qtype.begin(el)) return;
       if (el.dataset.oneline !== undefined && /\n/.test(el.value)) el.value = el.value.replace(/\s*\n\s*/g, ' ');   // 粘贴进来的换行
       const { field } = parsePath(el.dataset.path);
       const structural = event.type === 'change' || field === 'template' || field.startsWith('blank:');
@@ -380,7 +383,8 @@ function mount(root, { bus, store }) {
 
   render();
   loadTaxonomy().then(t => { s.taxonomy = t; render(); });
-  loadActive().then(poll);
+  const linked = new URLSearchParams(location.hash.split('?')[1] || '').get('draft');
+  (linked ? open(linked) : loadActive()).then(poll);
 
   return () => {
     alive = false;

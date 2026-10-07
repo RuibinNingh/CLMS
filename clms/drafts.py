@@ -119,9 +119,15 @@ def load(vault: str, draft_id: str) -> dict:
 def save(vault: str, draft: dict):
     with _lock:
         draft["updated_at"] = now_iso()
+        from .ledger import operation_current
+        operation = operation_current()
+        if operation:
+            draft.setdefault("_operation_receipts", {})[operation["operation_id"]] = {"digest": operation["digest"]}
         path = _path(vault, draft["id"])
         with open(path + ".tmp", "w", encoding="utf-8") as fh:
             json.dump(draft, fh, ensure_ascii=False)
+        if operation and operation.get("validate"):
+            operation["validate"]()
         os.replace(path + ".tmp", path)
 
 
@@ -199,7 +205,7 @@ def _pages(image_ids, sources=None):
 
 
 def create(vault: str, image_ids: list, hint: str = "", manual_genre: str = "", kind: str = "",
-           session_id: str = "", sources=None, upload_id: str = "") -> dict:
+           session_id: str = "", sources=None, upload_id: str = "", initial_groups=None, name: str = "") -> dict:
     """新建草稿。上传的图片只进入「准备」（staged），用户确认页序后才开始执行。"""
     kind = kind or ("manual" if manual_genre else "extract")
     if kind in ("chat", "review") and not agent_mode(vault):
@@ -214,10 +220,13 @@ def create(vault: str, image_ids: list, hint: str = "", manual_genre: str = "", 
              "hint": hint, "kind": kind, "name": "", "session_id": session_id, "messages": [], "revisions": [],
              "error": "", "committed": None, "last_job": None,
              "agent": {"messages": [], "run": 0, "inbox": [], "token": None}}
-    if manual_genre:
+    if initial_groups is not None:
+        add_revision(draft, normalize_groups(initial_groups), "assistant")
+    elif manual_genre:
         add_revision(draft, normalize_groups([{"genre": manual_genre, "items": [{}], "dictation": [
             {"template": "", "blanks": {}}]}]), "manual")
         msg(draft, "edit", "新建空白草稿，直接在右侧填写", changes=[])
+    draft["name"] = str(name or "").strip()[:40]
     with _lock:
         if upload_id and os.path.isfile(_path(vault, draft_id)):
             return load(vault, draft_id)

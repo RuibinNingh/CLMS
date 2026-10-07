@@ -24,7 +24,7 @@ function sessRow(x) {
         <em>${p.complete ? '已评完' : `评了 ${p.done}/${p.total}`}</em></span>
     </button>
     <span class="rv-sess__acts">
-      <a class="btn btn--ghost btn--icon btn--sm" href="/print/session?id=${x.id}" target="_blank" rel="noopener" title="打印" aria-label="打印${sessionTitle(x)}">${icon('print')}</a>
+      <button class="btn btn--ghost btn--icon btn--sm" data-action="rv.openPreview" data-arg="${x.id}" title="打印预览" aria-label="打印预览${sessionTitle(x)}">${icon('print')}</button>
       <button class="btn btn--ghost btn--icon btn--sm" data-action="rv.cancel" data-arg="${x.id}" title="删除" aria-label="删除${sessionTitle(x)}">${icon('trash')}</button>
     </span>
   </li>`;

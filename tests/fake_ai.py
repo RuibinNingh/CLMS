@@ -121,6 +121,14 @@ def revise(prompt: str) -> dict:
 SETS = {"A": SET_A, "B": SET_B, "C": SET_C}
 
 
+def sample_group(group):
+    """FAKE_AI_UNKNOWN_QTYPE=1 时故意让现代文首题提交一个未建立的题型。"""
+    out = copy.deepcopy(group)
+    if os.environ.get("FAKE_AI_UNKNOWN_QTYPE") and out.get("genre") == "现代文阅读" and out.get("items"):
+        out["items"][0]["qtype"] = "一个用户从未创建的题型"
+    return out
+
+
 def _text(msg) -> str:
     content = msg.get("content")
     if isinstance(content, list):
@@ -152,6 +160,8 @@ def agent_reply(messages: list, tools: list) -> dict:
     """确定性的工具调用 Agent：只看本次 run 的消息（最后一条真实用户消息之后）决定下一步。"""
     names = {t["function"]["name"] for t in tools}
     first = _text(messages[0])
+    if "## 全局助手" in first:
+        return global_reply(messages, names)
     start = max(i for i, m in enumerate(messages) if m["role"] == "user" and not _text(m).startswith("（这是 view_pages"))
     prompt = _text(messages[start])
     turn = messages[start + 1:]
@@ -163,7 +173,7 @@ def agent_reply(messages: list, tools: list) -> dict:
         return review_agent_reply(messages, names)
     if "你是 CLMS 录入流程里的子代理" in first:                     # 子代理
         match = re.search(r"\[fake:([ABC]):(\d+)\]", first)
-        group = SETS[match.group(1)]["groups"][int(match.group(2))] if match else SET_C["groups"][0]
+        group = sample_group(SETS[match.group(1)]["groups"][int(match.group(2))] if match else SET_C["groups"][0])
         if not done:
             if normalize(group) == "dictation":
                 return {"tool_calls": [_call("dictation_add", entries=group["dictation"])]}
@@ -183,12 +193,12 @@ def agent_reply(messages: list, tools: list) -> dict:
                           "pages": [min(n + 1, pages)], "instructions": f"[fake:{key}:{n}]"}
                          for n, g in enumerate(data["groups"])]
                 return {"tool_calls": [_call("delegate", tasks=tasks)]}
-            group = data["groups"][0]
+            group = sample_group(data["groups"][0])
             return {"tool_calls": [_call("group_add", genre=group["genre"], **_material(group))]}
         key = _key_of([c for m in done for c in m.get("tool_calls") or []])
         if last_calls == ["group_add"]:
             gid = re.search(r"板块 (g\d+)", results[-1]["content"]).group(1)
-            return {"tool_calls": [_call("items_add", gid=gid, items=SETS[key]["groups"][0]["items"])]}
+            return {"tool_calls": [_call("items_add", gid=gid, items=sample_group(SETS[key]["groups"][0])["items"])]}
         if last_calls == ["delegate"]:
             return {"tool_calls": [_call("draft_view")]}
         notes = SETS[key].get("notes")
@@ -232,6 +242,58 @@ def agent_reply(messages: list, tools: list) -> dict:
 
 def normalize(group) -> str:
     return "dictation" if group["genre"] == "名句默写" else "reading"
+
+
+def global_reply(messages, names):
+    """Deterministic shared-catalog scenarios, including actual post-approval results."""
+    start = max(index for index, message in enumerate(messages) if message["role"] == "user")
+    prompt, turn = _text(messages[start]), messages[start + 1:]
+    replies = [message for message in turn if message["role"] == "assistant"]
+    results = [message for message in turn if message["role"] == "tool"]
+    last = ((replies[-1].get("tool_calls") or [{}])[0].get("function") or {}).get("name") if replies else ""
+    def result(name):
+        for message in reversed(results):
+            # OpenAI requests omit optional tool.name; associate by original call ID.
+            calls = [call for reply in replies for call in reply.get("tool_calls") or []]
+            match = next((call for call in calls if call.get("id") == message.get("tool_call_id")), {})
+            if (match.get("function") or {}).get("name") == name:
+                try:
+                    return json.loads(message["content"])
+                except ValueError:
+                    return {}
+        return {}
+    if "复习" in prompt and ("创建" in prompt or "安排" in prompt):
+        minutes = int((re.search(r"(\d+)\s*分钟", prompt) or [None, "30"])[1])
+        if not replies:
+            return {"content": "先看看适合这次复习的现代文题目。", "tool_calls": [_call("get_recommendations", minutes=minutes, genres=["modern"], fill=True)]}
+        if last == "get_recommendations":
+            ids = [item["id"] for item in result(last).get("items", [])]
+            if not ids:
+                return {"content": "目前没有可安排的现代文题目。"}
+            return {"content": "我将提交正式复习审核，等待你确认题目清单。", "tool_calls": [_call("create_review_session", item_ids=ids, minutes=minutes, title="现代文复习")]}
+        operation = result("create_review_session")
+        if operation.get("status") == "applied":
+            session = operation.get("result", {})
+            return {"content": f"已创建 {session.get('minutes', minutes)} 分钟现代文复习 {session.get('id')}，可以打开打印预览。"}
+        return {"content": "这份正式复习没有创建。审核结果：" + operation.get("status", "待审核")}
+    version = re.search(r"EV-\d+", prompt)
+    if version:
+        if not replies:
+            return {"content": "先读取这一稿的正式全文和题目要求。", "tool_calls": [_call("get_essay_version", version_id=version.group())]}
+        if last == "get_essay_version" and any(word in prompt for word in ("评价", "评分", "47", "保存")):
+            return {"content": "基于正式全文追加一份 47/60 的评价。", "tool_calls": [_call("append_essay_evaluation", version_id=version.group(), total_score=47,
+                    summary="主题明确，第二段转折还需要更自然。", strengths=["主题清楚"], issues=["第二段转折突然"], suggestions=["补充过渡细节", "收紧结尾"], evaluator="fake-model", model="fake")]}
+        if last == "append_essay_evaluation" and any(word in prompt for word in ("笔记", "重点")):
+            draft = result("get_essay_version")
+            return {"content": "再保存下一稿的修改重点。", "tool_calls": [_call("append_essay_note", attempt_id=draft["attempt_id"], version_id=version.group(), text="第二段转折太突然，下一稿重点处理第二段和结尾。")]}
+        return {"content": "已读取正式作文。" + ("评价和修改重点已按版本保存。" if last in {"append_essay_evaluation", "append_essay_note"} else "可以继续讨论第二段和结尾。")}
+    if not replies:
+        match = re.search(r"\[tool:([a-z_]+)\]\s*(\{.*\})", prompt, re.S)
+        if match and match[1] in names:
+            return {"tool_calls": [_call(match[1], **json.loads(match[2]))]}
+        tool = "list_taxonomy" if "题型" in prompt else "list_essay_prompts" if "作文题" in prompt else "list_drafts" if "草稿" in prompt else "get_overview"
+        return {"content": "我先查询真实学习记录。", "tool_calls": [_call(tool)]}
+    return {"content": "已根据实际工具结果完成查询。"}
 
 
 SAY = {"delegate": "这份卷子有几个大题，我分给子代理并行录入。", "draft_view": "都录完了，我检查一下整份草稿。",
@@ -353,7 +415,7 @@ class FakeAI(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        text = next((p["text"] for p in body["messages"][0]["content"] if p.get("type") == "text"), "")
+        text = _text(body["messages"][0])
         if "## 复习助手" in text:
             message = review_reply(body["messages"])
             if body.get("stream"):
@@ -380,11 +442,15 @@ class FakeAI(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        if "## 用户这次说" in text:
+        if "你负责手写完整作文的 OCR 转写" in text:
+            out = {"text": "成长的那一天\n我走在回家的路上，心里十分忐忑。\n父亲说：慢慢来，别怕出错。\n我终于明白，成长不是一顺间的事。",
+                   "uncertainties": [{"text": "一顺间", "reason": "原稿疑似错别字，按原文保留"}]}
+        elif "## 用户这次说" in text:
             out = revise(text)
         elif "## 板块 genre" in text:
             with _lock:
                 out = copy.deepcopy(next(_cycle))
+            out["groups"] = [sample_group(g) for g in out["groups"]]
         else:
             out = {"reply": "?"}
         content = json.dumps(out, ensure_ascii=False)

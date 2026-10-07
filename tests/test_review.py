@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from clms import creation, library, records, review_ai, scheduling, sessions  # noqa: E402
 from clms.common import save_config  # noqa: E402
-from test_core import TempVault, _group_a  # noqa: E402
+from test_core import TempVault, _group_a, seed_types  # noqa: E402
 
 WD = [1, 4, 6]
 
@@ -28,7 +28,7 @@ class MemoryKindTests(unittest.TestCase):
     def test_kinds(self):
         from clms.taxonomy import memory_kind
         self.assertEqual(memory_kind("dictation", "直接默写"), "recall")
-        self.assertEqual(memory_kind("classical", "实词解释题"), "recall")
+        self.assertEqual(memory_kind("classical", "实词解释题"), "skill")
         self.assertEqual(memory_kind("classical", "翻译题"), "skill")
         self.assertEqual(memory_kind("modern", "意象作用题"), "skill")
 
@@ -119,6 +119,7 @@ class PlanTests(unittest.TestCase):
 class LibraryAndRecordsTests(TempVault):
     def setUp(self):
         super().setUp()
+        seed_types(self.vault)
         self.ids = creation.commit_draft(self.vault, {"id": "D-x", "images": []}, _group_a())["item_ids"]
 
     def test_facets_group_and_paging(self):
@@ -181,6 +182,7 @@ class ReviewAssistantTests(TempVault):
         self.ai = fake_ai.start(0)
         save_config(self.vault, {"ai_base_url": f"http://127.0.0.1:{self.ai.server_address[1]}/v1",
                                  "ai_api_key": "k", "ai_model": "fake"})
+        seed_types(self.vault)
         self.ids = creation.commit_draft(self.vault, {"id": "D-x", "images": []}, _group_long())["item_ids"]
         self.sid = sessions.create(self.vault, self.ids)["id"]
         self.server = make_server(self.vault, "127.0.0.1", 0)

@@ -11,3 +11,6 @@ venv/
 .env
 .env.*
 !.env.example
+
+# Browser acceptance artifacts
+.playwright-mcp/

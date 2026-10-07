@@ -11,7 +11,7 @@ import re
 
 from . import dictation as dict_mod
 from .common import as_float_or_none, clamp_int
-from .taxonomy import GENRE_BY_CODE, normalize_genre
+from .taxonomy import DICTATION_TYPES, GENRE_BY_CODE, normalize_genre
 
 ITEM_FIELDS = ("no", "qtype", "stem", "answer", "answer_origin", "analysis", "user_answer", "note")
 MATERIAL_FIELDS = ("title", "author", "source", "text")
@@ -28,8 +28,6 @@ def _text(value) -> str:
 
 
 def default_blank_lines(qtype: str, score) -> int:
-    if "选择" in (qtype or ""):
-        return 0
     if score:
         return max(2, min(12, round(score * 1.2)))
     return 4
@@ -45,7 +43,7 @@ def _item(raw: dict, fallback_iid: str) -> dict:
     if raw.get("blank_lines") in (None, ""):
         item["blank_lines"] = default_blank_lines(item["qtype"], item["score"])
     else:
-        item["blank_lines"] = clamp_int(raw.get("blank_lines"), 0, 24, 4)
+        item["blank_lines"] = clamp_int(raw.get("blank_lines"), 0, 1000, 4)
     if item["answer_origin"] not in ("image", "ai", "user"):
         item["answer_origin"] = "image" if item["answer"] else ""
     return item
@@ -56,7 +54,9 @@ def _dictation(raw: dict, fallback_iid: str) -> dict:
     template = _text(raw.get("template"))
     template = dict_mod.PLACEHOLDER_RE.sub(lambda m: "{书写区域%s}" % m.group(1), template)
     blanks = dict_mod.normalize_blanks(raw.get("blanks"))
-    kind = _text(raw.get("kind")) or ("理解性默写" if len(template) > 30 else "直接默写")
+    kind = _text(raw.get("kind"))
+    if kind not in DICTATION_TYPES:
+        kind = "理解性默写" if len(template) > 30 else "直接默写"
     return {"iid": str(raw.get("iid") or fallback_iid), "template": template, "blanks": blanks,
             "source": _text(raw.get("source")), "kind": kind}
 

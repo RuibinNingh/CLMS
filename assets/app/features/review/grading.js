@@ -37,6 +37,7 @@ function top(s) {
     <span class="rv-top__prog" title="评了 ${p.done}/${p.total}"><span class="meter" data-tone="${p.complete ? 'high' : 'mid'}"><i data-w="${meterWidth(p)}"></i></span>
       <em>${p.complete ? '已评完' : `评了 ${p.done}/${p.total}`}</em></span>
     <span class="rv-top__acts">
+      <button class="btn btn--sm" data-action="rv.printPreview" title="打印预览">${icon('print')}<span class="rv-top__lab">预览</span></button>
       <a class="btn btn--sm" href="/print/session?id=${x.id}" target="_blank" rel="noopener" aria-label="打印这次复习">${icon('print')}<span class="rv-top__lab">打印</span></a>
       <a class="btn btn--sm btn--ghost rv-top__more" href="/print/session?id=${x.id}&answers=1" target="_blank" rel="noopener">含答案</a>
     </span>

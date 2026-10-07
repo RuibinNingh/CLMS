@@ -6,8 +6,9 @@
 """
 
 import json
+import uuid
 
-from . import creation, library, records, sessions
+from . import ai_review, library, records, sessions
 from .harness import Tool, ToolResult
 from .taxonomy import GENRE_BY_CODE
 
@@ -38,6 +39,19 @@ def _record_brief(r: dict) -> dict:
                                   "at", "voided", "restored_from", "replaces")}
 
 
+def _proposal(vault, tool, payload, ctx):
+    """Legacy entry tools now share the server's formal-write review authority."""
+    agent = getattr(ctx, "agent", None)
+    host = getattr(getattr(agent, "on_event", None), "__self__", None)
+    actor = {"kind": "entry", "conversation_id": str(getattr(host, "draft_id", "entry")),
+             "run_id": str(getattr(agent, "run_id", "direct")),
+             "call_id": str((getattr(ctx, "call", None) or {}).get("id") or uuid.uuid4().hex)}
+    request_id = actor["run_id"] + ":" + actor["call_id"]
+    row = ai_review.propose(vault, "entry", tool, request_id, payload, actor)
+    return ToolResult(_dump(row), {"summary": "待人工审核 · " + row["label"], "operation_id": row["id"],
+                                  "status": row["status"]})
+
+
 def library_tools(vault: str) -> list:
     def search(args, ctx):
         data = library.list_items(vault, args.get("genre") or "", args.get("qtype") or "", args.get("status") or "",
@@ -60,26 +74,20 @@ def library_tools(vault: str) -> list:
 
     def update(args, ctx):
         changes = {k: args[k] for k in EDIT_PROPS if k in args}
-        creation.update_item(vault, args["item_id"], changes)
-        return ToolResult(f"已修改 {args['item_id']}：" + "、".join(changes), {"summary": f"{args['item_id']} 已修改"})
+        return _proposal(vault, "item.update", {"item_id": args["item_id"], "changes": changes}, ctx)
 
     def mat_update(args, ctx):
         changes = {k: args[k] for k in ("title", "author", "source", "text") if k in args}
-        creation.update_material(vault, args["material_id"], changes)
-        return ToolResult(f"已修改材料 {args['material_id']}", {"summary": f"{args['material_id']} 已修改"})
+        return _proposal(vault, "material.update", {"material_id": args["material_id"], "changes": changes}, ctx)
 
     def suspend(args, ctx):
-        library.set_suspended(vault, args["item_id"], bool(args.get("suspended", True)))
-        word = "停用" if args.get("suspended", True) else "恢复复习"
-        return ToolResult(f"{args['item_id']} 已{word}", {"summary": f"{args['item_id']} 已{word}"})
+        return _proposal(vault, "item.suspend", {"item_id": args["item_id"], "suspended": bool(args.get("suspended", True))}, ctx)
 
     def delete(args, ctx):
-        library.delete(vault, args["item_id"])
-        return ToolResult(f"{args['item_id']} 已删除（可以用 library_restore 撤销）", {"summary": f"{args['item_id']} 已删除"})
+        return _proposal(vault, "item.delete", {"item_id": args["item_id"]}, ctx)
 
     def restore(args, ctx):
-        library.restore(vault, args["item_id"])
-        return ToolResult(f"{args['item_id']} 已恢复", {"summary": f"{args['item_id']} 已恢复"})
+        return _proposal(vault, "item.restore", {"item_id": args["item_id"]}, ctx)
 
     item = {"item_id": {"type": "string", "description": "题库编号，如 Q-000012"}}
     return [
@@ -92,20 +100,20 @@ def library_tools(vault: str) -> list:
                  "limit": {"type": "integer"}}}, search, lambda a: f"查题库{' · ' + a['query'] if a.get('query') else ''}"),
         Tool("library_get", "看一道题的完整内容、记忆状态、所属材料和复习记录。",
              {"type": "object", "properties": item, "required": ["item_id"]}, get, lambda a: f"查看 {a.get('item_id')}"),
-        Tool("library_update", "修改题库里的一道题（只传要改的字段）。改题干或默写答案后若和别的题重复会被拒绝。",
+        Tool("library_update", "提交一道正式题目的修改审核（只传要改的字段），人工批准才生效。重复题会被拒绝。",
              {"type": "object", "properties": dict(item, **EDIT_PROPS), "required": ["item_id"]}, update,
              lambda a: f"改 {a.get('item_id')}"),
-        Tool("material_update", "修改题库里的一篇阅读材料（标题 / 作者 / 出处 / 原文）。",
+        Tool("material_update", "提交正式阅读材料的修改审核（标题 / 作者 / 出处 / 原文），人工批准才生效。",
              {"type": "object", "properties": {"material_id": {"type": "string"}, "title": {"type": "string"},
                                                "author": {"type": "string"}, "source": {"type": "string"},
                                                "text": {"type": "string"}}, "required": ["material_id"]},
              mat_update, lambda a: f"改材料 {a.get('material_id')}"),
-        Tool("library_suspend", "停用（不再安排复习）或恢复一道题。",
+        Tool("library_suspend", "提交停用或恢复一道题的审核，人工批准才改变安排。",
              {"type": "object", "properties": dict(item, suspended={"type": "boolean"}), "required": ["item_id"]},
              suspend, lambda a: f"{'停用' if a.get('suspended', True) else '恢复'} {a.get('item_id')}"),
-        Tool("library_delete", "删除一道题（追加提交，可撤销）。只在用户明确要求时使用。",
+        Tool("library_delete", "提交删除一道题的审核（追加提交，可撤销）。只在用户明确要求时使用。",
              {"type": "object", "properties": item, "required": ["item_id"]}, delete, lambda a: f"删除 {a.get('item_id')}"),
-        Tool("library_restore", "撤销删除，把已删除的题恢复到题库。",
+        Tool("library_restore", "提交撤销删除的审核，人工批准后恢复题库。",
              {"type": "object", "properties": item, "required": ["item_id"]}, restore, lambda a: f"恢复 {a.get('item_id')}"),
     ]
 
@@ -123,17 +131,14 @@ def record_tools(vault: str) -> list:
         return ToolResult(_dump(_record_brief(r)), {"summary": f"{r['item_name']} · {r['grade_label']}"})
 
     def update(args, ctx):
-        r = records.update(vault, args["commit_id"], args.get("grade"), args.get("note"))
-        return ToolResult(_dump(_record_brief(r)), {"summary": f"{r['item_name']} · {r['grade_label']}"})
+        payload = {key: args[key] for key in ("commit_id", "grade", "note") if key in args}
+        return _proposal(vault, "record.update", payload, ctx)
 
     def delete(args, ctx):
-        r = records.delete(vault, args["commit_id"])
-        return ToolResult(f"已作废 {args['commit_id']}（{r['item_name']}）；可用 record_restore 恢复",
-                          {"summary": f"作废 {r['item_name']} 的记录"})
+        return _proposal(vault, "record.delete", {"commit_id": args["commit_id"]}, ctx)
 
     def restore(args, ctx):
-        r = records.restore(vault, args["commit_id"])
-        return ToolResult(_dump(_record_brief(r)), {"summary": f"恢复 {r['item_name']} 的记录"})
+        return _proposal(vault, "record.restore", {"commit_id": args["commit_id"]}, ctx)
 
     cid = {"commit_id": {"type": "string", "description": "记录编号（提交号），如 C-000031"}}
     grade = {"type": "integer", "description": GRADE_HELP}
@@ -146,13 +151,13 @@ def record_tools(vault: str) -> list:
              {"type": "object", "properties": {"item_id": {"type": "string"}, "grade": grade, "note": {"type": "string"},
                                                "date": {"type": "string"}, "session_id": {"type": "string"}},
               "required": ["item_id", "grade"]}, add, lambda a: f"补记 {a.get('item_id')}"),
-        Tool("record_update", "修改一条复习记录的评分或反馈（旧记录作废、写一条新的）。",
+        Tool("record_update", "提交复习记录修改审核，人工批准后旧记录作废并写一条新的。",
              {"type": "object", "properties": dict(cid, grade=grade, note={"type": "string"}), "required": ["commit_id"]},
              update, lambda a: f"改记录 {a.get('commit_id')}"),
-        Tool("record_delete", "作废一条复习记录（可恢复）。",
+        Tool("record_delete", "提交复习记录作废审核（可恢复），人工批准才生效。",
              {"type": "object", "properties": cid, "required": ["commit_id"]}, delete,
              lambda a: f"作废记录 {a.get('commit_id')}"),
-        Tool("record_restore", "恢复一条已作废的复习记录。",
+        Tool("record_restore", "提交恢复已作废记录的审核，人工批准才生效。",
              {"type": "object", "properties": cid, "required": ["commit_id"]}, restore,
              lambda a: f"恢复记录 {a.get('commit_id')}"),
     ]

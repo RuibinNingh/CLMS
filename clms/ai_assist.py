@@ -21,7 +21,7 @@ import urllib.request
 
 from .common import load_config
 from .draft_schema import normalize_groups
-from .taxonomy import GENRES, qtypes
+from .taxonomy import GENRES, qtypes, valid_qtype
 
 try:                                   # 可选：缩图 / 长图切片；没有 Pillow 就原图直发
     from PIL import Image
@@ -77,8 +77,10 @@ def image_data_urls(path: str, max_width: int = MAX_WIDTH, rotate: int = 0) -> l
     return out
 
 
-def _config(vault: str):
+def _config(vault: str, config_override=None):
     cfg = load_config(vault)
+    if config_override:
+        cfg.update(config_override)
     base, key, model = (str(cfg.get(k) or "").strip() for k in ("ai_base_url", "ai_api_key", "ai_model"))
     missing = [n for n, v in (("API 地址", base), ("API Key", key), ("模型", model)) if not v]
     if missing:
@@ -117,9 +119,9 @@ def estimate_prompt(messages, tools=None) -> int:
     return total
 
 
-def _open(vault: str, payload: dict, tools_used: bool = False):
+def _open(vault: str, payload: dict, tools_used: bool = False, config_override=None):
     """发请求，返回 (response, timeout)；调用方负责关闭。HTTP / 网络 / 超时错误统一转成中文 ValueError。"""
-    cfg, base, key, _ = _config(vault)
+    cfg, base, key, _ = _config(vault, config_override)
     request = urllib.request.Request(
         _endpoint(base), data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
@@ -213,7 +215,7 @@ class ThinkSplitter:
             self.buf = ""
 
 
-def chat(vault: str, messages: list, tools=None, on_delta=None) -> dict:
+def chat(vault: str, messages: list, tools=None, on_delta=None, config_override=None) -> dict:
     """带工具的多轮调用（Agent harness 用），流式。messages 已是 OpenAI 格式。
     on_delta(kind, data)：kind = thinking / text（data 为文字片段）或 toolcall（data = {index, name, delta}）。
     思考来自 delta.reasoning_content / reasoning，或正文里的 <think>；它只用于展示，不回传给模型。
@@ -221,7 +223,7 @@ def chat(vault: str, messages: list, tools=None, on_delta=None) -> dict:
     返回 {content, thinking, tool_calls:[{id, name, arguments}], finish_reason,
           usage: {input, output, estimated}, timing: {ttft, gen, tps}}。
     usage 优先用服务返回的（请求带 stream_options.include_usage；服务不认这个参数时自动去掉重发，并记住）。"""
-    cfg, base, _, model = _config(vault)
+    cfg, base, _, model = _config(vault, config_override)
     payload = {"model": model, "messages": messages, "temperature": 0.1,
                "max_tokens": int(cfg.get("ai_max_tokens") or 6000), "stream": True}
     if tools:
@@ -242,14 +244,18 @@ def chat(vault: str, messages: list, tools=None, on_delta=None) -> dict:
 
     splitter = ThinkSplitter(route)
     slots, finish, usage = {}, "", {}
+    def open_model():
+        if config_override is None:
+            return _open(vault, payload, tools_used=bool(tools))
+        return _open(vault, payload, tools_used=bool(tools), config_override=config_override)
     try:
-        response, timeout = _open(vault, payload, tools_used=bool(tools))
+        response, timeout = open_model()
     except ModelHTTPError as exc:
         if "stream_options" not in payload or exc.status not in (400, 422):
             raise
         _NO_USAGE_OPTION.add(base)
         payload.pop("stream_options")
-        response, timeout = _open(vault, payload, tools_used=bool(tools))
+        response, timeout = open_model()
     try:
         with response:
             if "event-stream" not in (response.headers.get("Content-Type") or ""):
@@ -344,8 +350,16 @@ def extract_json(text: str) -> dict:
 
 def _qtype_table(vault: str) -> str:
     table = qtypes(vault)
-    return "\n".join(f"- {g['name']}：" + "、".join(table[g["code"]])
+    return "\n".join(f"- {g['name']}：" + ("、".join(table[g["code"]]) or "（尚未建立题型）")
                      for g in GENRES if g["code"] != "dictation")
+
+
+def sanitize_qtypes(vault, groups):
+    """模型输出的未知题型一律留空；用户手动新增题型走 taxonomy API。"""
+    for group in groups:
+        for item in group.get("items", []):
+            item["qtype"] = valid_qtype(vault, group["genre"], item.get("qtype"))
+    return groups
 
 
 EXTRACT_PROMPT = """你是高中语文错题录入助手。图片是语文试卷或练习的照片 / 截图（可能分成几张，按顺序拼接），通常同时包含题目和答案（参考答案、解析或批改）。请整理成结构化 JSON，供错题本入库。
@@ -358,7 +372,7 @@ EXTRACT_PROMPT = """你是高中语文错题录入助手。图片是语文试卷
   - 原文逐字转录，不改写、不省略；段落之间用一个换行分隔；古诗按原排版每句或每联换行；保留①②③段落序号；注释放在 text 末尾，另起一段以「注：」开头。
 - items：该材料下的每道小题（名句默写 group 里为空数组）：
   - no：题号原样（如 "7"、"8(1)"）
-  - qtype：题目类型，从下方题型表选最贴切的一个；确实没有合适的才自拟一个以「题」结尾的简短名称
+  - qtype：只能填写当前板块题型表里的用户题型；明确匹配才填写。没有合适题型、判断不确定或该板块题型表为空时，必须写空字符串。禁止自创题型，也不要勉强选最接近项
   - stem：题干原文；选择题把选项放进题干，每个选项单独一行（A. ……）
   - answer：参考答案。图片里有就照录，answer_origin 写 "image"；图片里没有时由你按高考阅卷习惯写（分条，每条一个采分点），answer_origin 写 "ai"
   - analysis：解析，图片里有就录，没有留空
@@ -384,6 +398,8 @@ REVISE_PROMPT = """你是高中语文错题录入助手，正在和用户一起�
 
 ## 可选题型
 %s
+
+qtype 只能从当前板块的用户题型表中选；明确匹配才填写。无合适项、判断不确定或表为空时写空字符串。禁止自创或勉强选择最接近项。
 
 ## 当前草稿
 %s
@@ -416,7 +432,7 @@ def extract(vault: str, image_paths: list, hint: str = "", progress=None, rotati
     if progress:
         progress("parse", "解析模型回复", "local")
     obj = extract_json(reply)
-    groups = normalize_groups(obj.get("groups"))
+    groups = sanitize_qtypes(vault, normalize_groups(obj.get("groups")))
     if not groups:
         raise ValueError("模型没有从图片里识别出题目。可以换一张更清晰的图，或在对话里说明这是哪一类题")
     return {"groups": groups, "notes": str(obj.get("notes") or "").strip()}
@@ -443,5 +459,5 @@ def revise(vault: str, groups: list, history: list, instruction: str, image_path
     if progress:
         progress("parse", "比对并解析改动", "local")
     draft = obj.get("draft") if isinstance(obj.get("draft"), dict) else obj
-    new_groups = normalize_groups(draft.get("groups")) if isinstance(draft, dict) and "groups" in draft else groups
+    new_groups = sanitize_qtypes(vault, normalize_groups(draft.get("groups"))) if isinstance(draft, dict) and "groups" in draft else groups
     return {"reply": str(obj.get("reply") or "").strip() or "已按你的要求修改。", "groups": new_groups}

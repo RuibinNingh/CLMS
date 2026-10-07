@@ -18,15 +18,18 @@ import { gradingView } from './grading.js';
 import { gradingActions } from './grading-actions.js';
 import { assistantActions, initialAssistant } from './assistant-actions.js';
 import { bindQuote, placeQuote, quoteButton } from './quote.js';
+import { initialPreview, previewActions, rememberedPreview } from './preview-actions.js';
+import { previewRail, previewView } from './preview.js';
 
 const memory = { session: null, focus: null };
 
 function layout(s) {
   const grading = Boolean(s.session);
-  return html`<div class="rv" data-mode="${grading ? 'grade' : 'plan'}" data-rail="${s.railOpen ? 'open' : 'closed'}" data-ai="${s.ai.open ? 'open' : 'closed'}">
-    <aside class="rv__rail" aria-label="${grading ? '答题卡' : '复习记录'}">${grading ? questionNav(s) : sessionsRail(s)}</aside>
+  const previewing = grading && s.preview.open;
+  return html`<div class="rv" data-mode="${previewing ? 'preview' : grading ? 'grade' : 'plan'}" data-rail="${s.railOpen ? 'open' : 'closed'}" data-ai="${s.ai.open ? 'open' : 'closed'}">
+    <aside class="rv__rail" aria-label="${previewing ? '答题留白' : grading ? '答题卡' : '复习记录'}">${previewing ? previewRail(s) : grading ? questionNav(s) : sessionsRail(s)}</aside>
     ${s.railOpen ? html`<button class="rv__scrim" data-action="rv.rail" aria-label="收起左栏"></button>` : ''}
-    <div class="rv__main">${grading ? gradingView(s) : planView(s)}</div>
+    <div class="rv__main">${previewing ? previewView(s) : grading ? gradingView(s) : planView(s)}</div>
     ${quoteButton(s)}
   </div>`;
 }
@@ -37,9 +40,9 @@ export const page = {
     const s = {
       ...initialPlanState(new Set(GENRES.map(g => g.code))), sessions: null, session: null, revealed: new Set(), busy: null,
       focus: null, pendingNotes: new Map(), ai: initialAssistant(), stickAi: false, taxonomy: null, today: '',
-      railOpen: false, quote: null, open: new Map(),
+      railOpen: false, quote: null, open: new Map(), preview: initialPreview(),
     };
-    let alive = true; let frame = 0;
+    let alive = true; let frame = 0; let openSeq = 0;
 
     function render() {
       if (!alive) return;
@@ -61,13 +64,19 @@ export const page = {
       if (r.ok) s.sessions = r.data.sessions; else if (s.sessions === null) s.sessions = [];
       render();
     }
-    async function openSession(id, focus = null) {
+    async function openSession(id, focus = null, previewing = false) {
+      if (!alive || !await preview.flush()) return;
+      const mine = ++openSeq;
       const r = await get(`/api/session?id=${encodeURIComponent(id)}`);
+      if (!alive || mine !== openSeq) return;
       if (!r.ok) { fail(r); return; }
       if (s.session?.id !== id) { s.revealed = new Set(); s.pendingNotes = new Map(); s.quote = null; }
+      bus.emit('context', { session_id: id });
       s.session = r.data; s.railOpen = false; s.stickAi = true;
+      s.preview = initialPreview();
       const items = r.data.items;
       s.focus = (items.find(x => x.id === focus) || items.find(x => !x.grade) || items[0])?.id || null;
+      if (previewing) preview.open(); else preview.clearRemembered();
       render();
     }
     /** 只换数据、不动界面状态（对答案、焦点、对话都保留）。 */
@@ -76,13 +85,16 @@ export const page = {
       if (r.ok && s.session?.id === r.data.id) { s.session = r.data; render(); }
     }
 
-    const plans = planActions(s, { render, afterCreate: async id => { await loadSessions(); return openSession(id); } });
+    const preview = previewActions(s, { root, render, bus, isAlive: () => alive });
+    const plans = planActions(s, { render, afterCreate: async id => { if (!alive) return; await loadSessions(); return openSession(id, null, true); } });
     const grades = gradingActions(s, { root, render, refresh, bus });
     const ai = assistantActions(s, { root, render, soon, refresh, bus });
 
-    function back() {
+    async function back() {
+      if (!await preview.flush() || !alive) return;
       ai.abort();
-      s.session = null; s.focus = null; s.quote = null; s.railOpen = false; s.ai = initialAssistant();
+      preview.clearRemembered(); ++openSeq;
+      s.session = null; s.focus = null; s.quote = null; s.railOpen = false; s.ai = initialAssistant(); s.preview = initialPreview();
       render(); loadSessions(); plans.makePlan();
     }
 
@@ -90,7 +102,9 @@ export const page = {
       ...plans.actions,
       ...grades.actions,
       ...ai.actions,
+      ...preview.actions,
       open: ({ arg }) => openSession(arg),
+      openPreview: ({ arg }) => openSession(arg, null, true),
       back,
       newPlan: () => { if (s.session) back(); else { s.railOpen = false; render(); } },
       rail: () => { s.railOpen = !s.railOpen; render(); },
@@ -105,17 +119,19 @@ export const page = {
     });
     const unbind = [grades.bindKeys(ai.open), ai.bindComposer(), bindQuote(root, s, render)];
 
-    const intent = store.get().reviewIntent;
+    const linked = new URLSearchParams(location.hash.split('?')[1] || '').get('session');
+    const intent = linked ? { session: linked, preview: new URLSearchParams(location.hash.split('?')[1] || '').get('preview') === '1' } : store.get().reviewIntent;
     store.set({ reviewIntent: null });
     loadTaxonomy().then(t => { s.taxonomy = t; render(); });
     get('/api/summary').then(r => { if (r.ok) { s.today = r.data.today; render(); } });
     loadSessions();
     if (intent?.pinned?.length) s.pinned = [...intent.pinned];
-    if (intent?.session) openSession(intent.session);
+    if (intent?.session) openSession(intent.session, null, Boolean(intent.preview));
+    else if (!intent && rememberedPreview()) openSession(rememberedPreview(), null, true);
     else if (!intent && memory.session) openSession(memory.session, memory.focus);
     plans.makePlan();
     plans.loadPick();
     render();
-    return () => { alive = false; cancelAnimationFrame(frame); ai.abort(); unbind.forEach(f => f()); undefine(); };
+    return () => { alive = false; ++openSeq; cancelAnimationFrame(frame); preview.dispose(); ai.abort(); unbind.forEach(f => f()); undefine(); };
   },
 };

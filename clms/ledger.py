@@ -11,11 +11,75 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 
 from .common import data_dir, now_iso
 
 GENESIS_HASH = "0" * 64
 _write_lock = threading.Lock()
+_operation_local = threading.local()
+
+
+class OperationConflict(ValueError):
+    """The same operation identity cannot be reused for different content."""
+
+    code = "request_conflict"
+
+
+def operation_current():
+    """Return trusted server operation context; never accept this from a model payload."""
+    return getattr(_operation_local, "current", None)
+
+
+@contextmanager
+def operation(vault, operation_id, digest, *, source="", actor=None, validate=None):
+    """Attach provenance and an atomic native receipt to an existing domain transaction.
+
+    Waiting for a model or reviewer happens outside this context. Domain functions
+    keep their original implementation; a receipt is committed together with their
+    learning events. A recovered receipt proves that execution happened.
+    """
+    if operation_current() is not None:
+        raise ValueError("不能嵌套领域操作")
+    current = {"vault": os.path.abspath(vault), "operation_id": str(operation_id),
+               "digest": str(digest), "source": str(source), "actor": dict(actor or {}),
+               "validate": validate, "receipt": None}
+    _operation_local.current = current
+    try:
+        yield current
+    finally:
+        _operation_local.current = None
+
+
+def _receipt_table(db):
+    db.execute("""CREATE TABLE IF NOT EXISTS operation_receipts (
+        operation_id TEXT PRIMARY KEY, digest TEXT NOT NULL,
+        result_json TEXT NOT NULL, commits_json TEXT NOT NULL, created_at TEXT NOT NULL)""")
+
+
+def _receipt_row(row):
+    if row is None:
+        return None
+    return {"operation_id": row["operation_id"], "digest": row["digest"],
+            "result": json.loads(row["result_json"]), "commits": json.loads(row["commits_json"]),
+            "created_at": row["created_at"]}
+
+
+def operation_receipt(vault, operation_id):
+    """Read receipts without creating a database or migrating it during a query."""
+    path = os.path.join(os.path.abspath(vault), "语文", ".clms", "ledger.db")
+    if not os.path.isfile(path):
+        return None
+    from urllib.parse import quote
+    db = sqlite3.connect("file:" + quote(path, safe="/") + "?mode=ro", uri=True, timeout=30)
+    db.row_factory = sqlite3.Row
+    try:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='operation_receipts'").fetchone():
+            return None
+        return _receipt_row(db.execute("SELECT * FROM operation_receipts WHERE operation_id=?",
+                                      (operation_id,)).fetchone())
+    finally:
+        db.close()
 
 
 def ledger_path(vault: str) -> str:
@@ -68,6 +132,13 @@ class Tx:
         prev_hash = last["commit_hash"] if last else GENESIS_HASH
         created_at = payload.get("_at") or now_iso()
         payload = {k: v for k, v in payload.items() if k != "_at"}
+        current = operation_current()
+        if current:
+            payload["_operation"] = {"id": current["operation_id"], "digest": current["digest"],
+                                     "source": current["source"]}
+            for key in ("key_id", "conversation_id", "run_id", "call_id"):
+                if current["actor"].get(key):
+                    payload["_operation"][key] = current["actor"][key]
         commit_id = self.next_id("C")
         commit_hash = compute_hash(prev_hash, created_at, source, commit_type, payload)
         cur = self.db.execute(
@@ -86,8 +157,32 @@ def transact(vault: str, fn):
         db = connect(vault)
         try:
             db.execute("BEGIN IMMEDIATE")
+            current = operation_current()
+            if current:
+                if current["vault"] != os.path.abspath(vault):
+                    raise ValueError("操作不能写入其它数据目录")
+                _receipt_table(db)
+                receipt = _receipt_row(db.execute("SELECT * FROM operation_receipts WHERE operation_id=?",
+                                                 (current["operation_id"],)).fetchone())
+                if receipt:
+                    if receipt["digest"] != current["digest"]:
+                        raise OperationConflict("同一操作编号的内容不同")
+                    current["receipt"] = receipt
+                    db.execute("COMMIT")
+                    return receipt["result"], receipt["commits"]
+                if current["validate"]:
+                    current["validate"]()
             tx = Tx(db)
             result = fn(tx)
+            if current:
+                if current["validate"]:
+                    current["validate"]()
+                stamp = now_iso()
+                db.execute("INSERT INTO operation_receipts VALUES(?,?,?,?,?)",
+                           (current["operation_id"], current["digest"], canonical_json(result),
+                            canonical_json(tx.commits), stamp))
+                current["receipt"] = {"operation_id": current["operation_id"], "digest": current["digest"],
+                                      "result": result, "commits": tx.commits, "created_at": stamp}
             db.execute("COMMIT")
             return result, tx.commits
         except Exception:

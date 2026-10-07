@@ -16,11 +16,11 @@ function editor(d, s) {
   const qtypes = s.taxonomy?.qtypes?.[d.genre] || [];
   return html`<form class="lib__edit" data-submit="lib.save">
     ${d.genre === 'dictation' ? '' : html`<label class="field"><span>题型</span><select class="select" name="qtype">
-      ${opt('', '未分类', d.qtype)}${each(qtypes.includes(d.qtype) || !d.qtype ? qtypes : [d.qtype, ...qtypes], x => x, x => opt(x, x, d.qtype))}</select></label>`}
+      ${opt('', '未分类', d.qtype)}${each(qtypes, x => x, x => opt(x, x, d.qtype))}</select></label>`}
     <label class="field"><span>${d.genre === 'dictation' ? '题面（用 {书写区域} 标出要写的空）' : '题干'}</span><textarea class="textarea" name="stem" rows="3">${d.stem}</textarea></label>
     <label class="field"><span>参考答案</span><textarea class="textarea" name="answer" rows="4">${d.answer}</textarea></label>
     ${d.genre === 'dictation' ? html`<label class="field"><span>出处</span><input class="input" name="source" value="${d.source || ''}"></label>`
-      : html`<label class="field"><span>留白行数</span><input class="input" type="number" min="0" max="24" name="blank_lines" value="${d.blank_lines ?? 0}"></label>`}
+      : html`<label class="field"><span>留白行数</span><input class="input" type="number" min="0" max="1000" name="blank_lines" value="${d.blank_lines ?? 0}"></label>`}
     <label class="field"><span>错因</span><textarea class="textarea" name="note" rows="2">${d.note || ''}</textarea></label>
     <div class="lib__edit-foot"><button type="button" class="btn" data-action="lib.edit">取消</button><button class="btn btn--primary">保存修改</button></div>
   </form>`;
@@ -39,7 +39,7 @@ export function detail(s) {
   const sc = d.sched;
   return html`<article class="lib__detail" data-genre="${d.genre}">
     <header class="lib__dhead">
-      <span class="genre-dot"></span><b>${genreShort(d.genre)}${d.qtype ? ` · ${d.qtype}` : ''}</b><span class="muted">${d.id}</span>
+      <span class="genre-dot"></span><b>${genreShort(d.genre)} · ${d.qtype || '未分类'}</b><span class="muted">${d.id}</span>
       <button class="btn btn--ghost btn--icon lib__close" data-action="lib.close" aria-label="关闭">${icon('close')}</button>
     </header>
     <dl class="lib__stats">

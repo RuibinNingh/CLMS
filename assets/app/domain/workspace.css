@@ -1,0 +1,27 @@
+.workspace { display: grid; gap: var(--sp-4); }
+.workspace__toolbar, .workspace__links { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.workspace__body { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); gap: var(--sp-5); align-items: start; }
+.workspace__list, .workspace__day { display: grid; gap: var(--sp-2); min-width: 0; }
+.workspace__day h2 { font-size: var(--text-md); color: var(--fg-2); margin: var(--sp-2) 0; }
+.workspace__row { text-align: left; cursor: pointer; padding: var(--sp-4); display: grid; gap: var(--sp-1); width: 100%; color: var(--fg-1); overflow-wrap: anywhere; }
+.workspace__row[aria-pressed="true"] { border-color: var(--accent); box-shadow: var(--ring-line); }
+.workspace__row span, .workspace__row small { color: var(--fg-2); font-size: var(--text-sm); }
+.workspace__detail { padding: var(--sp-5); display: grid; gap: var(--sp-4); min-width: 0; }
+.workspace__detail header { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.workspace__detail h2 { font-size: var(--text-lg); overflow-wrap: anywhere; }
+.workspace__json { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-family: var(--font-mono); font-size: var(--text-sm); margin: var(--sp-2) 0; max-height: 520px; overflow: auto; }
+.workspace__form { display: grid; gap: var(--sp-3); }
+.workspace__filters { display: grid; grid-template-columns: minmax(160px, 2fr) repeat(4, minmax(120px, 1fr)); gap: var(--sp-2); align-items: end; }
+.workspace summary { cursor: pointer; color: var(--fg-2); }
+.audit__question { padding: var(--sp-3) 0; border-bottom: 1px solid var(--border-1); }
+.audit__question p { white-space: pre-wrap; margin-top: var(--sp-1); overflow-wrap: anywhere; }
+.audit__compare { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.audit__compare th, .audit__compare td { text-align: left; vertical-align: top; padding: var(--sp-2); border-bottom: 1px solid var(--border-1); overflow-wrap: anywhere; }
+.audit__compare pre { white-space: pre-wrap; font: inherit; margin: 0; }
+.audit__compare th:first-child { width: 20%; }
+@media (max-width:1160px) { .workspace__filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width:760px) {
+  .workspace__body { grid-template-columns: minmax(0, 1fr); }
+  .workspace__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace__filters > input[type="search"] { grid-column: 1 / -1; }
+}

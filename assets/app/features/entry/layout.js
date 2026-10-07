@@ -66,7 +66,7 @@ function sheet(s) {
     <div class="sheet__scroll" id="sheet-scroll">
       ${showImage && !d.pages?.length ? html`<p class="sheet__empty">${d.kind === 'review' ? '批改结果写在复习记录里，去「复习」或「题库」查看。' : '这段对话还没有草稿。'}</p>`
         : showImage ? renderImages(d.pages, s.zoom) : html`<div class="paper sheet__paper">${renderCanvas(s.working || d.groups, {
-          ro, flash: s.flash, expanded: s.expanded, opened: s.opened, taxonomy: s.taxonomy, dedupe: d.dedupe })}</div>`}
+          ro, flash: s.flash, expanded: s.expanded, opened: s.opened, taxonomy: s.taxonomy, addQtype: s.addQtype, dedupe: d.dedupe })}</div>`}
     </div>
     ${footer(s)}
   </section>`;

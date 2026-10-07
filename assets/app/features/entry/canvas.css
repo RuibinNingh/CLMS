@@ -57,6 +57,8 @@
 }
 .qtype--empty { background: var(--warning-soft); color: var(--warning-fg); }
 .qtype:disabled { cursor: default; opacity: 1; appearance: none; }
+.qtype__add { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
+.qtype__add .input { min-width: 10em; flex: 1; }
 .q__score { display: inline-flex; align-items: center; font-size: var(--text-xs); color: var(--fg-3); }
 .paper .q__score input { width: 3.2em; text-align: right; font-family: var(--font-sans); font-size: var(--text-xs); }
 .q__tools { margin-left: auto; }

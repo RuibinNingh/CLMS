@@ -86,7 +86,7 @@ export function gradingActions(s, { root, render, refresh, bus }) {
   function bindKeys(openAssistant) {
     const doc = root.ownerDocument;
     const onKey = event => {
-      if (!s.session || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      if (!s.session || s.preview?.open || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
       if (!root.isConnected || !root.offsetParent) return;
       const target = event.target;
       if (target?.closest?.(TYPING)) return;

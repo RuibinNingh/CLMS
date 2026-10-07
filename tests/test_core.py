@@ -17,7 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from clms import ai_assist, creation, dictation, draft_schema, ledger, projections, scheduling, sessions  # noqa: E402
+from clms import ai_assist, creation, dictation, draft_schema, ledger, projections, scheduling, sessions, taxonomy  # noqa: E402
 from clms.common import chinese_only, save_config  # noqa: E402
 
 
@@ -145,7 +145,19 @@ def _group_a():
     ])
 
 
+def seed_types(vault):
+    for genre, names in {"modern": ["意象作用题", "选择题", "句子赏析题"],
+                         "classical": ["实词解释题", "翻译题", "观点态度题"],
+                         "poetry": ["意象作用题", "思想情感题"]}.items():
+        for name in names:
+            taxonomy.add(vault, genre, name)
+    taxonomy.set_kind(vault, "classical", "实词解释题", "recall")
+
+
 class CreationTests(TempVault):
+    def setUp(self):
+        super().setUp()
+        seed_types(self.vault)
     def test_normalize_and_diff(self):
         groups = _group_a()
         self.assertEqual(groups[0]["genre"], "modern")
@@ -229,6 +241,7 @@ class ServerFlowTests(TempVault):
         self.ai = fake_ai.start(0)
         save_config(self.vault, {"ai_base_url": f"http://127.0.0.1:{self.ai.server_address[1]}/v1",
                                  "ai_api_key": "k", "ai_model": "fake", "ai_agent": self.AGENT})
+        seed_types(self.vault)
         self.server = make_server(self.vault, "127.0.0.1", 0)
         import threading
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -307,6 +320,28 @@ class ServerFlowTests(TempVault):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(req)
         self.assertEqual(ctx.exception.code, 403)
+
+    def test_fake_ai_unknown_qtype_becomes_uncategorized_then_allowed(self):
+        import fake_ai
+        import itertools
+        fake_ai._cycle = itertools.cycle([fake_ai.SET_A])
+        os.environ["FAKE_AI_UNKNOWN_QTYPE"] = "1"
+        try:
+            _, made = self.call("/api/drafts", {"images": [{"name": "a.png", "data":
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}]})
+            self.call("/api/draft/start", {"id": made["drafts"][0]["id"]})
+            draft = self.wait_ready(made["drafts"][0]["id"])
+            self.assertEqual(draft["groups"][0]["items"][0]["qtype"], "")
+            self.assertEqual(self.call("/api/draft/commit", {"id": draft["id"]})[0], 200)
+            self.assertEqual(self.call("/api/items?qtype=__unclassified__")[1]["total"], 1)
+            self.call("/api/taxonomy/add", {"genre": "modern", "name": "一个用户从未创建的题型"})
+            _, made = self.call("/api/drafts", {"images": [{"name": "b.png", "data":
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}]})
+            self.call("/api/draft/start", {"id": made["drafts"][0]["id"]})
+            draft = self.wait_ready(made["drafts"][0]["id"])
+            self.assertEqual(draft["groups"][0]["items"][0]["qtype"], "一个用户从未创建的题型")
+        finally:
+            os.environ.pop("FAKE_AI_UNKNOWN_QTYPE", None)
 
 
 if __name__ == "__main__":

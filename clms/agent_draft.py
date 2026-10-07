@@ -15,18 +15,18 @@ from . import creation
 from .draft_schema import FIELD_LABELS, MATERIAL_FIELDS, clean_text, issues, normalize_dictation, normalize_groups, \
     normalize_item
 from .harness import Tool, ToolError, ToolResult
-from .taxonomy import GENRE_BY_CODE, normalize_genre
+from .taxonomy import GENRE_BY_CODE, normalize_genre, valid_qtype
 
 ITEM_PROPS = {
     "no": {"type": "string", "description": "题号原样，如 7、8(1)"},
-    "qtype": {"type": "string", "description": "题型，从题型表里选"},
+    "qtype": {"type": "string", "description": "只选当前板块已有且明确匹配的题型；没有合适项写空字符串，不可自创"},
     "stem": {"type": "string", "description": "题干原文；选择题把选项放进题干，每个选项一行"},
     "answer": {"type": "string", "description": "参考答案，分条写，每条一个采分点"},
     "answer_origin": {"type": "string", "enum": ["image", "ai", "user"],
                       "description": "image=图中照录；ai=你补写或改写的"},
     "analysis": {"type": "string", "description": "解析（图中有才录）"},
     "score": {"type": "number", "description": "分值"},
-    "blank_lines": {"type": "integer", "description": "答题留白行数 0–24（每行约 20 字）"},
+    "blank_lines": {"type": "integer", "description": "答题留白行数 0–1000；打印预览可按真实答案排版自动适配"},
     "user_answer": {"type": "string", "description": "学生自己的作答"},
     "note": {"type": "string", "description": "错因"},
 }
@@ -236,6 +236,7 @@ def draft_tools(ws: Workspace, scope: str = "", structure: bool = True) -> list:
                 if entry.get("answer") and not entry.get("answer_origin"):
                     entry["answer_origin"] = "image"
                 item = normalize_item(entry, ws.new_iid("i"))
+                item["qtype"] = valid_qtype(ws.vault, group["genre"], item["qtype"])
                 group["items"].append(item)
                 added.append(item)
         ws.changed()
@@ -254,7 +255,10 @@ def draft_tools(ws: Workspace, scope: str = "", structure: bool = True) -> list:
             merged = dict(entry, **{k: args[k] for k in changed})
             if "answer" in changed and "answer_origin" not in changed:
                 merged["answer_origin"] = "ai"
-            group["items"][group["items"].index(entry)] = normalize_item(merged, entry["iid"])
+            item = normalize_item(merged, entry["iid"])
+            if "qtype" in changed:
+                item["qtype"] = valid_qtype(ws.vault, group["genre"], item["qtype"])
+            group["items"][group["items"].index(entry)] = item
             no = entry["no"]
         ws.changed()
         return ok(f"已改 {entry['iid']}（第{no or '?'}题）：{_changes_text(args, changed)}",

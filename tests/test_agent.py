@@ -20,7 +20,7 @@ from clms.agent_draft import Workspace, draft_tools  # noqa: E402
 from clms.common import save_config  # noqa: E402
 from clms.source_export import create_source_export  # noqa: E402
 import test_core  # noqa: E402
-from test_core import TempVault, _group_a  # noqa: E402
+from test_core import TempVault, _group_a, seed_types  # noqa: E402
 
 PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
@@ -84,6 +84,9 @@ class HarnessTests(unittest.TestCase):
 
 
 class DraftToolTests(TempVault):
+    def setUp(self):
+        super().setUp()
+        seed_types(self.vault)
     def tools(self, ws, **kw):
         return {t.name: t for t in draft_tools(ws, **kw)}
 
@@ -122,6 +125,7 @@ class DraftToolTests(TempVault):
 class RecordTests(TempVault):
     def setUp(self):
         super().setUp()
+        seed_types(self.vault)
         result = creation.commit_draft(self.vault, {"id": "D-x", "images": []}, _group_a())
         self.ids = result["item_ids"]
         self.sid = sessions.create(self.vault, self.ids)["id"]
@@ -193,6 +197,7 @@ class AgentFlowTests(test_core.ServerFlowTests):
 
     AGENT = True
     test_full_flow = None
+    test_fake_ai_unknown_qtype_becomes_uncategorized_then_allowed = None
 
     def setUp(self):
         super().setUp()
@@ -238,7 +243,13 @@ class AgentFlowTests(test_core.ServerFlowTests):
         draft = self.wait_ready(draft["id"])
         self.assertEqual(draft["status"], "committed")
         _, item = self.call("/api/item?id=Q-000001")
-        self.assertTrue(item["suspended"])
+        self.assertFalse(item["suspended"])  # 模型提案尚未获得人工批准
+        from clms import ai_review
+        pending = ai_review.items(self.vault, {"view": "pending"})["items"]
+        self.assertEqual(len(pending), 1)
+        decision = ai_review.decide(self.vault, pending[0]["id"], pending[0]["revision"], "approve", reviewer={"kind": "human"})
+        self.assertEqual(decision["status"], "applied")
+        self.assertTrue(library.item_detail(self.vault, item["id"])["suspended"])
         _, sess = self.call("/api/sessions", {"item_ids": ["Q-000002", "Q-000004"], "minutes": 10})
         review = self.upload(review_session=sess["id"])
         self.assertEqual(review["kind"], "review")
@@ -249,6 +260,18 @@ class AgentFlowTests(test_core.ServerFlowTests):
         self.assertEqual(recs["total"], 2)
         code, rec = self.call("/api/record/update", {"commit_id": recs["records"][0]["commit_id"], "note": "改了反馈"})
         self.assertEqual((code, rec["note"]), (200, "改了反馈"))
+
+    def test_agent_fake_ai_unknown_qtype_becomes_blank(self):
+        os.environ["FAKE_AI_UNKNOWN_QTYPE"] = "1"
+        try:
+            draft = self.upload()
+            self.assertEqual(draft["status"], "ready", draft.get("error"))
+            self.assertEqual(draft["groups"][0]["items"][0]["qtype"], "")
+            self.assertEqual(draft["groups"][0]["items"][1]["qtype"], "意象作用题")
+            self.assertEqual(self.call("/api/draft/commit", {"id": draft["id"]})[0], 200)
+            self.assertEqual(self.call("/api/items?qtype=__unclassified__")[1]["total"], 1)
+        finally:
+            os.environ.pop("FAKE_AI_UNKNOWN_QTYPE", None)
 
     def test_steering_and_abort(self):
         _, res = self.call("/api/drafts", {"manual": "modern"})

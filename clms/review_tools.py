@@ -104,7 +104,7 @@ def tools(vault: str, job: dict) -> list:
             where = f"《{mat['title'] or '无题'}》" if mat else (item.get("source") or "名句默写")
             graded = sess["grades"].get(item["id"])
             score = f" · {item['score']:g} 分" if isinstance(item.get("score"), (int, float)) and item["score"] else ""
-            lines.append(f"- 第 {n} 题 {item['id']} · {_short(item['genre'])} · {item.get('qtype') or '—'}{score} · {where} · "
+            lines.append(f"- 第 {n} 题 {item['id']} · {_short(item['genre'])} · {item.get('qtype') or '未分类'}{score} · {where} · "
                          + (f"已自评「{grade_label(item['genre'], graded['grade'])}」" if graded else "未评"))
         mats = desk.materials(state, sess)
         if mats:
@@ -120,7 +120,7 @@ def tools(vault: str, job: dict) -> list:
         state, sess, item_id, n = desk.resolve(args)
         item = state.item_view(item_id, context(vault))
         head = f"第 {n} 题（{item_id}" + (f"，原卷第 {item['no']} 题" if item.get("no") else "") + "）" \
-            + f" · {GENRE_BY_CODE.get(item['genre'], {}).get('name', item['genre'])} · {item.get('qtype') or '—'}"
+            + f" · {GENRE_BY_CODE.get(item['genre'], {}).get('name', item['genre'])} · {item.get('qtype') or '未分类'}"
         if isinstance(item.get("score"), (int, float)) and item["score"]:
             head += f" · {item['score']:g} 分"
         parts = [head]

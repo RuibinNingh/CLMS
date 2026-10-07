@@ -1,7 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
-  margin: 0; min-height: 100vh; background: var(--surface-0); color: var(--fg-1);
+  margin: 0; min-height: 100dvh; background: var(--surface-0); color: var(--fg-1);
   font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-ui);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; font-kerning: normal;
 }
@@ -21,3 +21,9 @@ a { color: var(--accent); }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 ::selection { background: var(--flash); }
+
+html { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+button, a, [role="button"] { touch-action: manipulation; }
+button, [role="button"] { user-select: none; -webkit-user-select: none; }
+button:active { filter: brightness(.94); }
+@media (pointer: coarse) { input, textarea, select { font-size: var(--text-lg); } }

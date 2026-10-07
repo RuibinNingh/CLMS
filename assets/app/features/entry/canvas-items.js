@@ -16,13 +16,16 @@ const area = (path, value, { cls = '', placeholder = '', ro, rows = 1 } = {}) =>
   <textarea class="ta ${cls}" rows="${rows}" data-path="${path}" data-input="entry.field" data-autosize
     placeholder="${placeholder}" ${ro ? html`readonly` : ''}>${value || ''}</textarea>`;
 
-function qtypeSelect(path, value, options, ro) {
-  const list = options.includes(value) || !value ? options : [value, ...options];
+function qtypeSelect(path, value, options, ro, addQtype) {
   return html`<select class="qtype ${value ? '' : 'qtype--empty'}" data-path="${path}" data-change="entry.field"
     aria-label="题型" ${ro ? html`disabled` : ''}>
-    <option value="" ${value ? '' : html`selected`}>选择题型</option>
-    ${each(list, q => q, q => html`<option value="${q}" ${q === value ? html`selected` : ''}>${q}${options.includes(q) ? '' : '（新）'}</option>`)}
-  </select>`;
+    <option value="" ${value ? '' : html`selected`}>未分类</option>
+    ${each(options, q => q, q => html`<option value="${q}" ${q === value ? html`selected` : ''}>${q}</option>`)}
+    ${ro ? '' : html`<option value="__add__">+ 新增题型…</option>`}
+  </select>${addQtype?.path === path ? html`<form class="qtype__add" data-submit="entry.qtypeSave">
+    <input class="input" name="name" placeholder="新题型名称" aria-label="新题型名称" required maxlength="80" autocomplete="off">
+    <button class="btn btn--sm btn--primary">保存</button><button type="button" class="btn btn--sm" data-action="entry.qtypeCancel">取消</button>
+  </form>` : ''}`;
 }
 
 function extra(path, label, value, cls, ro, open) {
@@ -43,7 +46,7 @@ export function itemCard(group, item, o) {
   <div class="q" data-key="${item.iid}" data-anchor="${base}" ${isFlash(o.flash, group.gid, item.iid, '*') ? html`data-flash` : ''}>
     <div class="q__head">
       <input class="q__no" value="${item.no}" data-path="${base}|no" data-input="entry.field" aria-label="题号" placeholder="#" ${o.ro ? html`readonly` : ''}>
-      <span class="q__slot" ${fl('qtype')}>${qtypeSelect(`${base}|qtype`, item.qtype, o.qtypes, o.ro)}</span>
+      <span class="q__slot" ${fl('qtype')}>${qtypeSelect(`${base}|qtype`, item.qtype, o.qtypes, o.ro, o.addQtype)}</span>
       <label class="q__score" ${fl('score')}><input type="number" min="0" max="30" step="1" value="${item.score ?? ''}"
         data-path="${base}|score" data-input="entry.field" aria-label="分值" ${o.ro ? html`readonly` : ''}>分</label>
       ${dup ? html`<span class="chip chip--warn" title="题库里已有 ${dup}">库中已有 · 记又错一次</span>` : ''}

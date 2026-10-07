@@ -32,4 +32,6 @@ export async function loadTaxonomy() {
   return taxonomy || { genres: GENRES, qtypes: {} };
 }
 
+export function setTaxonomy(value) { taxonomy = value; }
+
 export const masteryTone = value => (value < 0.35 ? 'low' : value < 0.7 ? 'mid' : 'high');
