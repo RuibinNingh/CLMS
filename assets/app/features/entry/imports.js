@@ -2,8 +2,17 @@
 import { readImages } from '../../core/files.js';
 import { isPdf, splitPdf, pdfError } from '../../core/pdf.js';
 import { revealFrom } from '../../core/dom.js';
+import { toast } from '../../ui/feedback.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+// getRandomValues 在内网 HTTP 也可用；后端导入幂等键保持 32 位小写 hex。
+function uploadId() {
+  if (typeof globalThis.crypto?.getRandomValues !== 'function') {
+    throw new Error('当前浏览器无法生成安全的上传编号，请刷新页面或更换浏览器后重试。');
+  }
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)),
+    byte => byte.toString(16).padStart(2, '0')).join('');
+}
 
 export function fileImports({ s, root, render, post, applyDraft, connect, refreshList, fresh }) {
   s.imports = [];
@@ -89,10 +98,16 @@ export function fileImports({ s, root, render, post, applyDraft, connect, refres
 
   async function take(files) {
     if (!files?.length) return;
-    if (s.draft && s.draft.status !== 'staged') await fresh();
-    s.imports.push(...[...files].map(file => ({ id: crypto.randomUUID().replaceAll('-', ''), file,
-      pdf: isPdf(file), name: file.name, state: 'queued', refs: [], done: 0, total: 0 })));
-    paint(); pump();
+    try {
+      // 先完整准备新批次，再切换页面/追加队列；初始化失败不清掉已有草稿或队列。
+      const jobs = [...files].map(file => ({ id: uploadId(), file,
+        pdf: isPdf(file), name: file.name, state: 'queued', refs: [], done: 0, total: 0 }));
+      if (s.draft && s.draft.status !== 'staged') await fresh();
+      s.imports.push(...jobs);
+      paint(); pump();
+    } catch (error) {
+      toast(`文件准备失败：${pdfError(error)}`, { tone: 'bad', ms: 6000 });
+    }
   }
 
   function clear() {

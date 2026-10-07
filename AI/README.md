@@ -46,7 +46,9 @@
 ```bash
 python3 -m unittest discover -s tests -q   # tests/test_core.py：去重、提交链、调度、入库、复习、HTTP 全流程
 python3 tests/check_ui.py                  # 前端纪律 R1–R9
-python3 tests/e2e_main.py --shots /tmp/s   # 真浏览器旧主路径与统一审核
+CLMS_TODAY=2026-10-06 python3 tests/e2e_main.py  # 真浏览器旧主路径与统一审核，固定复习日（周二）
+python3 tests/e2e_http_upload.py           # 真非安全 HTTP：PNG/PDF 暂存、进度、加页、入队异常、重试与安全上下文
+python3 tests/e2e_pdf.py                   # 真 PDF.js 专项（e2e_main 也包含）：拆页、管理器、重试、取消、手机
 python3 tests/e2e_service.py              # 设置页取消/确认重启、真实进程重载、超时/离页与手机布局
 python3 tests/e2e_print.py                 # A4实际测量、持久默认留白、打印一致性
 python3 tests/e2e_essays.py                # 真浏览器作文OCR/校对/版本/评价
@@ -54,6 +56,8 @@ python3 tests/e2e_upgrade.py               # 审核修订、历史跳转、设�
 python3 tests/e2e_assistant.py             # 真浏览器全局助手、人工审核与持久会话
 python3 tests/e2e_mcp.py                   # 可选SDK真实Streamable HTTP协议
 ```
+
+`e2e_main.py` 的「今天刚复习过」题数断言需要固定复习日；使用上面的 `CLMS_TODAY`，避免非复习日排期到下一复习日改变题数。截图可加 `--shots <隔离输出目录>`；临时 vault 跟随 `TMPDIR`。`e2e_http_upload.py` 用 Chromium 原生共享内存（保留 `/dev/shm`，不使用 Playwright 默认的 `--disable-dev-shm-usage`），以避免受限 HOME 下 renderer 无权写临时共享文件。
 
 `tests/test_review.py` 覆盖两种记忆类型、推荐（自选 / 移除 / 未完成复习 / 薄弱题型 / 最近做过）、题库分面与分组、复习历史筛选、复习助手（只读 Agent 按需调用工具而不是整篇注入——检查发给模型的每一轮请求里带了什么、没带什么；段号范围与关键词、范围限定在这次复习；引用带位置；照片跨轮仍发原图；建议解析；流式块；关掉 Agent 模式时的旧做法）。`tests/test_taxonomy.py` 覆盖空库、增改删排序、记忆类型、旧库迁移、未分类、AI 和 Agent 的陌生题型约束。`tests/test_agent.py` 覆盖 harness（工具出错回给模型、截断不执行、旧图省略、插话、停止）、草稿工具、复习记录增删改查、脱敏导出，以及 Agent 模式的 HTTP 全流程。`tests/fake_ai.py` 是 OpenAI 兼容的假模型（带 `tools` 的请求扮演确定性的工具调用 Agent，包括复习助手；`REQUESTS` 记着最近的请求体）：识图请求轮流返回三套草稿（现代文《老街的灯》+ 默写、古诗《山居秋暝》+ 标点不同的重复默写、文言文《咏雪》），修订请求能听懂「第 N 题 + 答案 / 题型 / 留白」。环境变量 `FAKE_AI_UNKNOWN_QTYPE=1` 会故意提交陌生题型；`FAKE_AI_DELAY=秒` 模拟慢模型；`FAKE_AI_STREAM_DELAY=秒` 控制流式每片的间隔（e2e 默认 0.02，观察流式那一步临时放慢到 0.12）；`FAKE_AI_NO_STREAM_OPTIONS=1` 让假模型拒绝 `stream_options`（测试用量回退到估算）；`CLMS_TODAY=YYYY-MM-DD` 可以固定「今天」。
 
