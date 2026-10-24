@@ -16,12 +16,14 @@
 
 准备并验证只替换发布目录的 unit。停止 CLMS 后确认进程退出、数据文件没有其他打开者，私有冷备份原 unit、运行配置和完整数据目录，逐文件比对并在独立目录解压验证 SQLite。备份验证通过后安装新 unit、daemon-reload、启动并检查健康、实际进程目录、静态资源、权限和生产浏览器。启动失败时恢复原 unit 并启动上一版；是否恢复数据库取决于迁移兼容性与后续写入，不能直接覆盖运行中的库。
 
-本机当前 0.10.1 已按上述流程从 `6030883` 切到 `969ad07`，迁移文件没有变化。应用版本与源提交见 `artifacts/review-center-ui/production-969ad07.json`；完整备份及回退步骤见生产部署目录 README。生产20项 HTTP 检查与四种真实浏览器登录布局通过；未提供管理员密码或 MCP secret，登录后的业务与真实凭据调用没有复测。工程九项门禁及源码/构建对应证据保存在 `artifacts/review-center-ui/ready/`。此前0.10.0发布记录仍在 `artifacts/book-page-ui/production-6030883.json`。
+此前 0.10.1 已按上述流程从 `6030883` 切到 `969ad07`，迁移文件没有变化。应用版本与源提交见 `artifacts/review-center-ui/production-969ad07.json`；完整备份及回退步骤见生产部署目录 README。生产20项 HTTP 检查与四种真实浏览器登录布局通过；未提供管理员密码或 MCP secret，登录后的业务与真实凭据调用没有复测。工程九项门禁及源码/构建对应证据保存在 `artifacts/review-center-ui/ready/`。此前0.10.0发布记录仍在 `artifacts/book-page-ui/production-6030883.json`。
+
+本机当前0.10.2已从 `969ad07` 切换至 `f0099d6`。此次新增MCP附件暂存，无数据库迁移，原数据和认证配置保留；工程完整门禁、冷备份、发布包试启动、生产HTTP/浏览器及已连接MCP调用均分别验证。摘要见 [0.10.2发布记录](releases/0.10.2.json)，真实ChatGPT文件透传仍独立补验。
 
 ## 单镜像
 
 ```bash
-docker build -f deploy/Dockerfile -t clms-archive:0.10.1 .
+docker build -f deploy/Dockerfile -t clms-archive:0.10.2 .
 docker compose -f deploy/compose.yaml up -d --build
 ```
 
@@ -34,7 +36,7 @@ env -u DOCKER_HOST -u DOCKER_CONTEXT -u DOCKER_TLS -u DOCKER_TLS_VERIFY -u DOCKE
   docker --host=unix:///var/run/docker.sock build \
   --secret id=proxy_ca,src="$CODEX_PROXY_CERT" \
   --secret id=system_ca,src=/etc/ssl/certs/ca-certificates.crt \
-  -f deploy/Dockerfile -t clms-archive:0.10.1 .
+  -f deploy/Dockerfile -t clms-archive:0.10.2 .
 ```
 
 构建阶段联网安装锁定依赖。运行时无模型请求、远端字体/CDN 或动态安装，不需要代理 CA。

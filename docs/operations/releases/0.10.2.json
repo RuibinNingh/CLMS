@@ -1,0 +1,64 @@
+{
+  "version": "0.10.2",
+  "source_commit": "f0099d6be4c860e128cf8e0d20b36331ae0db96b",
+  "pull_request": "https://github.com/RuibinNingh/CLMS/pull/1",
+  "engineering": {
+    "status": "pass",
+    "required_suite": true,
+    "gates": {
+      "backend": "pass",
+      "frontend-types": "pass",
+      "frontend-unit": "pass",
+      "frontend-build": "pass",
+      "dependency-audit": "pass",
+      "browser": "pass",
+      "mcp-protocol": "pass",
+      "security": "pass",
+      "clean-deployment": "pass"
+    },
+    "tests": {
+      "backend": 87,
+      "frontend": 23,
+      "mcp": 10,
+      "security": 23,
+      "browser": 6
+    },
+    "skipped": 0,
+    "source_files_verified": 155,
+    "source_identity": "All exported files matched the tested working tree and the fixed release commit; verification report captured before commit.",
+    "protocol_and_security_counts_overlap_backend": true,
+    "dependency_vulnerabilities": 0
+  },
+  "production": {
+    "production_deployed": true,
+    "deployed_at": "2026-10-24T12:31:51.506834+08:00",
+    "source_commit": "f0099d6be4c860e128cf8e0d20b36331ae0db96b",
+    "version": "0.10.2",
+    "origin": "http://192.168.0.145:8473",
+    "http_checks": 14,
+    "production_browser_scenarios": 4,
+    "data_and_auth_preserved": true,
+    "runtime_config_unchanged": true,
+    "migrations_unchanged": true,
+    "connected_mcp": {
+      "authenticated": true,
+      "application_version": "0.10.2",
+      "protocol_version": "2025-11-25",
+      "attachment_tools_advertised": [
+        "upload_attachment",
+        "upload_asset"
+      ]
+    }
+  },
+  "backup": {
+    "cold_archive_verified": true,
+    "full_extraction_verified": true,
+    "sqlite_integrity": "ok",
+    "foreign_key_violations": 0
+  },
+  "unverified": [
+    "Real ChatGPT attachment handoff and E01–E05 model understanding",
+    "Physical devices",
+    "Authenticated production Web workflows"
+  ]
+}

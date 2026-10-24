@@ -33,3 +33,7 @@ uv run --frozen python scripts/verify.py --all --report artifacts/verification.j
 - DEPLOYED：实际目标生产切换、旧目录清理、重启与回滚记录完成。
 
 当前等级：ENGINEERING_COMPLETE。`artifacts/verification.json` 对 `de292c9b632fd08e7a033f0684d12f0c0a87f048` 的完整九门禁均pass、exit0、skip0，工作区采样为干净；Docker实际构建/运行证据独立保留。E01–E05/实体设备/生产仍按上述边界未执行，不标ACCEPTED或DEPLOYED。
+
+## 2026-10-24 · 0.10.2版本发布
+
+0.10.2 ENGINEERING_COMPLETE与本次现有作文档案馆版本升级的DEPLOYED均已验证。统一九门禁全部通过，后端87、前端23、浏览器6、协议10、安全23，skip0；协议/安全计数包含于后端。实际生产发布、冷备份、数据/认证保留、14项HTTP、四种浏览器布局及鉴权MCP capabilities调用通过，见 `../../operations/releases/0.10.2.json`。本次没有旧题库迁移或旧数据删除操作；E01–E05、真实ChatGPT附件透传、实体设备和生产登录后Web业务流程继续独立记录，不能标ACCEPTED。

@@ -8,7 +8,7 @@ CLMS 保存语文、英语作文的题目材料、图片/PDF 原稿、独立练�
 
 本机正式源码目录为 `/root/workspace/apps/clms`，主分支 `master` 已合入作文档案馆重构。原 Codex 工作树仅保留分支与工程证据，不再作为默认开发入口。旧源码、未提交修改和旧数据已独立保存，不混入新版源码。
 
-源码目录与生产 release、生产数据目录分开；改源码不等于上线。定位、并行设计产物与旧版恢复边界见 [本机工作区说明](docs/operations/workspace.md)。
+当前0.10.2的GitHub源码与实际生产发布见 [版本记录](docs/operations/releases/0.10.2.json)。源码目录与生产 release、生产数据目录分开；改源码不等于上线。定位、并行设计产物与旧版恢复边界见 [本机工作区说明](docs/operations/workspace.md)。
 
 ## 本机启动
 

@@ -2,13 +2,21 @@
 
 ## 正式维护入口
 
-- 正式源码目录：`/root/workspace/apps/clms`，主分支为 `master`；0.10.0 前端与发布记录在 `codex/book-page-frontend` 分支；0.10.1 审核中心与最新发布记录在 `codex/review-center-draft` 分支（`/root/.codex/worktrees/review-center-draft/clms`）。本次生产发布直接取已验证提交，不改变主分支。
+- 原正式源码目录 `/root/workspace/apps/clms` 与本地 `master` 保留。0.10.2维护工作树为 `/root/.codex/worktrees/clms-mcp-github/clms`，分支 `codex/publish-mcp-attachment-upload`；GitHub为 `RuibinNingh/CLMS` 的 `main`。历史0.10.0/0.10.1分支和原工作区未提交 `output/` 不变。
 - 2026-10-11 经用户明确授权，主分支从 `50f2721` 快进合并到重构提交 `cbbe05b8f76956f052db8ece8eaa584f55b0b56f`；后续工作区交接文档提交不改变应用运行代码或版本。
 - `/root/.codex/worktrees/essay-archive-rebuild/clms` 保留原重构分支和工程证据，但不是默认维护入口。不要删除其 Git 注册元数据，也不要在两个工作树同时修改同一维护任务。
 - 后端入口为 `backend/app/`，前端为 `frontend/`；旧 `clms/`、`assets/app/`、`clms.html`、旧测试和旧数据不属于当前运行源码。
 - `output/design/clms-icon/` 是已完成的独立设计产物，原位保留，未纳入旧修改 stash。0.10.0 的前端从这里精确复制 SVG/ICO/Apple touch icon 到 `frontend/public/icons/`，保留原图原色；运行时不读取 output。原设计目录仍不整体提交，不要用宽泛的 `git add .` 或 `git clean` 吸收或删除它。0.10.0 已于 2026-10-11 发布到生产。
 
-## 当前生产身份与源码关系
+## 当前生产身份与源码关系（0.10.2）
+
+- 2026-10-24 用户授权修复上传、提交GitHub并部署生产。固定源码 `f0099d6be4c860e128cf8e0d20b36331ae0db96b`，服务 `clms.service`，地址 [作文档案馆](http://192.168.0.145:8473/)。
+- 当前release `/root/workspace/apps/clms-archive/releases/f0099d6`；已核对unit、实际进程cwd、健康版本及前端构建。持久数据仍为 `/root/workspace/apps/clms-archive/data-archive`，原管理员、MCP凭据、会话、原件和运行配置保留，没有数据库迁移变更。
+- 私有冷备份 `/root/workspace/backups/clms/before-mcp-attachments-deploy-20261024T043146Z` 完整解压/逐文件及SQLite校验通过。回退unit为 `/root/workspace/backups/clms/before-mcp-attachments-deploy-20261024T043146Z/clms.service.before`，旧release `/root/workspace/apps/clms-archive/releases/969ad07` 保留；需要回退时先停服务并保留新数据快照，再恢复旧unit，不能覆盖运行中的库。
+- 工程九门禁通过，155源码文件与测试快照/发布提交一致；生产14项HTTP/资源检查、四种真实浏览器登录布局、已连接MCP的鉴权capabilities调用通过。真实ChatGPT附件透传、E01–E05、实体设备和生产登录后的Web流程尚未验收。
+- 摘要 [0.10.2.json](releases/0.10.2.json)，完整运维证据与截图 `/root/workspace/apps/clms-archive/deployment/mcp-attachments-0.10.2`。GitHub只提交审阅后的当前源码，不推送原本地Git历史或生成证据。
+
+## 历史生产身份（0.10.1）
 
 2026-10-11 用户明确要求「发布生产啊」后，将审核中心固定提交 `969ad07626d315a83f7f0678ea98b39e3d188f24` 构建为独立 release，10:11:55（Asia/Shanghai）完成切换及健康核验：
 

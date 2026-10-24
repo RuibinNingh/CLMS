@@ -1,11 +1,13 @@
 # 重构进度
 
-## 2026-10-24 · MCP附件上传修复（0.10.2）
+## 2026-10-24 · MCP附件上传修复与生产发布（0.10.2）
 
-- 用户授权修复附件上传、提交GitHub并部署生产。独立分支 `codex/mcp-attachment-upload` 从实际生产0.10.1的后续维护提交 `8b3b3d8` 建立；原工作区及未提交 `output/` 保留。
-- 新增 `upload_attachment` 的ChatGPT原生文件参数与 `upload_asset` 的通用Base64入口，均复用媒体服务，仅创建当前凭据的私人暂存页；正式练习/版本仍须网页审核。
-- 附件下载严格域名/HTTPS/公网解析/禁重定向/限流限时，不转发CLMS凭据；下载前后校验scope/到期/撤销。MCP JSON在解析前限制Content-Length及chunked体积，错误和HTTPX日志不回显临时链接或文件字节。
-- 完整九项工程门禁全部pass/exit0/skip0：后端87、前端23、真实浏览器6、官方MCP协议10、安全23（包含重叠用例）；依赖审计0漏洞，干净安装/迁移/启动/重启通过。已查看MCP上传待审和正式原稿截图，工程报告 `artifacts/verification.json`。GitHub提交与生产部署正在执行。ChatGPT宿主真实附件透传、E01–E05与实体设备尚未验收。
+- 用户授权「修复一下不能上传附件的问题,提交GitHub部署生产」。状态 DEPLOYED；固定源码 `f0099d6be4c860e128cf8e0d20b36331ae0db96b`，发布目录 `/root/workspace/apps/clms-archive/releases/f0099d6`，[GitHub PR #1](https://github.com/RuibinNingh/CLMS/pull/1)。本次只发布当前源码，不上传旧本地Git历史、业务数据、凭据或备份；原工作区及未提交 `output/` 保留。
+- `upload_attachment` 声明ChatGPT原生fileParams，`upload_asset` 接收通用Base64原件字节；复用同一媒体服务和凭据隔离，只暂存附件，正式练习/版本仍需网页审核。MCP JSON在解析前限额；受控附件下载限域名/HTTPS/公网解析/时间与流量，禁重定向、不转发CLMS认证，下载前后核对scope/撤销/到期。
+- 完整九项工程门禁全部pass/exit0/skip0：后端87、前端23、浏览器6、官方MCP协议10、安全23（后端计数含协议/安全用例）；依赖审计0漏洞，干净锁定安装、构建、迁移、启动/重启通过。已查看MCP上传待审和入档PDF页面截图；155个源码文件与测试快照/固定提交一致，实际release重建与工程前端逐字节一致，迁移和原图标未变。
+- 私有冷备份 `/root/workspace/backups/clms/before-mcp-attachments-deploy-20261024T043146Z` 已完整解压/逐文件/SQLite完整性与外键校验。最终切换于 `2026-10-24T12:31:51.506834+08:00` 完成；最终停服至启动核验 2.259 秒。数据、认证状态、原件和配置保留，旧0.10.1 release/unit可回退。
+- 生产14项HTTP/资源/权限检查及四种Chromium登录布局通过，四张截图均查看；unit、进程cwd与线上版本一致，无自动重启或新warning/error日志。已连接CLMS凭据的真实capabilities调用确认0.10.2及两个上传入口，未新增凭据或写入合成生产业务记录。
+- 发布摘要 [0.10.2.json](../../operations/releases/0.10.2.json)；完整私有证据 `/root/workspace/apps/clms-archive/deployment/mcp-attachments-0.10.2`。报告中的提交前身份保留，源码等价校验独立记录。真实ChatGPT附件透传、E01–E05模型识图、实体设备和生产登录后Web流程仍未验收，不能混称ACCEPTED。
 
 ## 2026-10-11 · 审核中心生产发布（0.10.1）
 
