@@ -1,3 +1,0 @@
-# Optional official Streamable HTTP SDK; normal CLMS uses only the standard library.
-mcp==1.28.1
-uvicorn>=0.30,<1

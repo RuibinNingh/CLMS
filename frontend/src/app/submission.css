@@ -1,0 +1,89 @@
+.submission-layout {
+  display: block;
+}
+.upload-section {
+  margin-top: var(--sp-5);
+}
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: var(--sp-6);
+  text-align: center;
+  gap: var(--sp-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  cursor: pointer;
+}
+.upload-zone small {
+  color: var(--fg-2);
+}
+.upload-zone input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--sp-3);
+  list-style: none;
+  padding: 0;
+}
+.page-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.page-card img {
+  display: block;
+  width: 100%;
+  height: 11rem;
+  object-fit: contain;
+  background: var(--surface-0);
+}
+.page-card-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  font-size: var(--text-xs);
+}
+.page-card .actions {
+  justify-content: center;
+  gap: 0;
+  padding: var(--sp-1);
+}
+.page-card button {
+  padding: var(--sp-2);
+  min-width: var(--control);
+  border-color: transparent;
+}
+.staged-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.staged-list button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.save-bar,
+.review-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  background: var(--surface-1);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.save-bar > small {
+  margin-right: auto;
+}
