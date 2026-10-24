@@ -1,0 +1,119 @@
+.evaluation-panel {
+  padding: var(--sp-6);
+  min-width: 0;
+}
+.evaluation-view {
+  margin-top: var(--sp-5);
+  font-size: var(--text-sm);
+}
+.evaluation-view p,
+.evaluation-view li {
+  overflow-wrap: anywhere;
+}
+.evaluation-view h3 {
+  font-size: var(--text-base);
+}
+.evaluation-history {
+  margin-top: 0;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--sp-2);
+}
+.evaluation-history > summary {
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+}
+.evaluation-empty {
+  padding: var(--sp-10) 0 var(--sp-6);
+  text-align: center;
+}
+.evaluation-empty > .ui-icon {
+  color: var(--fg-3);
+  margin-bottom: var(--sp-4);
+}
+.evaluation-empty h3 {
+  font-size: var(--text-base);
+}
+.evaluation-view > section {
+  margin-top: var(--sp-6);
+}
+.evaluation-view small {
+  overflow-wrap: anywhere;
+}
+.score {
+  font-size: var(--text-lg);
+  padding: var(--sp-3) 0;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.score strong {
+  font-size: var(--text-title);
+  font-weight: 650;
+}
+.score small {
+  display: block;
+  color: var(--fg-2);
+}
+.issue {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+.issue strong {
+  display: block;
+}
+.issue .location {
+  min-height: var(--control);
+  padding: var(--sp-1) 0;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-align: left;
+}
+.evaluation-summary {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.evaluation-view > .evaluation-summary {
+  margin-top: var(--sp-3);
+}
+.evaluation-summary > p {
+  font-family: var(--font-reading);
+  font-size: var(--text-base);
+  line-height: 1.9;
+}
+.issue-section h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.issue-section h4 small {
+  font-weight: 400;
+  color: var(--fg-3);
+}
+.issue p {
+  margin-bottom: var(--sp-2);
+}
+.issue-section.error > h4 {
+  color: var(--danger);
+}
+.issue-section.uncertain > h4 {
+  color: var(--warning);
+}
+blockquote {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--border);
+  color: var(--fg-2);
+}
+.issue-editor {
+  border: 1px solid var(--border);
+  padding: var(--sp-4);
+  border-radius: var(--radius-sm);
+  margin: var(--sp-3) 0;
+}
+.teacher-editor {
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-3);
+}
+.history {
+  padding: var(--sp-4) var(--sp-6);
+  margin-top: var(--sp-6);
+}

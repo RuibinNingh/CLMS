@@ -1,0 +1,304 @@
+@media (hover: hover) and (pointer: fine) {
+  button:not(:disabled):hover,
+  .button:hover {
+    background: var(--surface-2);
+  }
+  button.primary:not(:disabled):hover,
+  .button.primary:hover {
+    background: var(--accent-hover);
+  }
+  .archive-card:hover {
+    border-color: var(--border-hover);
+  }
+  .sidebar nav a:hover {
+    background: var(--surface-2);
+  }
+}
+@media (pointer: coarse) {
+  :root {
+    --control: var(--touch-control);
+  }
+}
+@media (max-width: 1160px) {
+  .app-shell {
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+  }
+  .main-content {
+    padding: var(--sp-6);
+  }
+  .sidebar {
+    padding-left: var(--sp-2);
+    padding-right: var(--sp-2);
+  }
+  .brand {
+    padding: 0;
+    justify-content: center;
+  }
+  .brand-wordmark,
+  .sidebar .nav-label,
+  .sidebar-bottom > small {
+    display: none;
+  }
+  .sidebar nav a {
+    justify-content: center;
+  }
+  .sidebar-bottom {
+    align-items: center;
+    padding: var(--sp-2);
+  }
+  .review-layout {
+    grid-template-columns: var(--review-queue) minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+  .review-reading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .review-detail .reading-switch {
+    display: flex;
+  }
+  .review-reading[data-panel="paper"] > .reading-evaluation,
+  .review-reading[data-panel="evaluation"] > .reading-paper {
+    display: none;
+  }
+  .page-heading {
+    flex-wrap: wrap;
+  }
+  .limits-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .app-shell {
+    display: block;
+  }
+  .sidebar {
+    position: sticky;
+    height: auto;
+    z-index: var(--z-nav);
+    padding: calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-3)
+      var(--sp-2);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    display: flex;
+    justify-content: flex-start;
+    gap: var(--sp-3);
+    margin: 0 0 var(--sp-2);
+    padding: var(--sp-1);
+  }
+  .brand-wordmark,
+  .sidebar .nav-label {
+    display: block;
+  }
+  .brand-icon {
+    width: var(--sp-8);
+    height: var(--sp-8);
+  }
+  .brand-wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    font-size: var(--text-base);
+  }
+  .sidebar-bottom {
+    display: flex;
+    position: absolute;
+    top: calc(var(--sp-2) + env(safe-area-inset-top, 0px));
+    right: var(--sp-3);
+    padding: 0;
+  }
+  .sidebar-bottom button {
+    width: var(--control);
+  }
+  .sidebar-bottom .nav-label {
+    display: none;
+  }
+  .sidebar nav {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: var(--sp-1);
+  }
+  .sidebar nav a {
+    flex-direction: column;
+    gap: 0;
+    min-height: var(--control);
+    padding: var(--sp-1) var(--sp-2);
+    font-size: var(--text-xs);
+    flex: 1;
+    text-align: center;
+  }
+  .main-content {
+    padding: var(--sp-5) var(--sp-3)
+      calc(var(--sp-8) + env(safe-area-inset-bottom, 0px));
+  }
+  .page-heading {
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-5);
+  }
+  .page-heading h1 {
+    font-size: var(--text-xl);
+  }
+  .page-heading > .actions {
+    width: 100%;
+  }
+  .form-section,
+  .prompt-material,
+  .attempt-info {
+    padding: var(--sp-4);
+  }
+  .form-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .archive-card {
+    flex-direction: column;
+    padding: var(--sp-4);
+    gap: var(--sp-3);
+  }
+  .archive-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .archive-filter-top {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--sp-3);
+  }
+  .segments button,
+  .reading-switch button {
+    flex: 1;
+  }
+  .archive-filters .filter-row > select {
+    flex: 1;
+  }
+  .filter-row > select,
+  .filter-row > input {
+    min-width: 7rem;
+  }
+  .date-filter {
+    flex: 1;
+  }
+  .date-filter input {
+    min-width: 0;
+    width: 100%;
+  }
+  .reading-layout,
+  .comparison-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reading-switch,
+  .comparison-switch {
+    display: flex;
+  }
+  .reading-layout[data-panel="paper"] > .reading-evaluation,
+  .reading-layout[data-panel="evaluation"] > .reading-paper,
+  .comparison-side[data-active="false"] {
+    display: none;
+  }
+  .reading-paper,
+  .reading-evaluation {
+    scroll-margin-top: calc(
+      var(--mobile-header-offset) + env(safe-area-inset-top, 0px)
+    );
+  }
+  .copy-label {
+    display: none;
+  }
+  .version-heading button {
+    min-width: var(--control);
+    padding: var(--sp-2);
+  }
+  .evaluation-panel {
+    padding: var(--sp-4);
+  }
+  .version-heading > .actions {
+    width: 100%;
+  }
+  .viewer-canvas {
+    max-height: var(--reading-height);
+  }
+  .viewer-toolbar,
+  .viewer-footer {
+    padding: var(--sp-2);
+  }
+  .page-navigation {
+    padding-left: var(--sp-2);
+    padding-right: var(--sp-2);
+  }
+  .page-navigation label {
+    gap: var(--sp-1);
+    min-width: 0;
+  }
+  .page-navigation select {
+    min-width: 0;
+    width: 100%;
+  }
+  .review-layout {
+    display: block;
+  }
+  .review-center.is-reviewing .filters,
+  .review-center.is-reviewing .review-guide,
+  .review-center.is-reviewing .page-heading .muted {
+    display: none;
+  }
+  .review-center.is-reviewing .page-heading > .actions {
+    width: auto;
+  }
+  .review-queue {
+    max-height: none;
+    overflow: visible;
+    position: static;
+  }
+  .review-layout.has-selection .review-queue,
+  .review-layout:not(.has-selection) .review-detail {
+    display: none;
+  }
+  .review-back {
+    display: inline-flex;
+    margin-bottom: var(--sp-3);
+  }
+  .review-action-bar {
+    bottom: 0;
+    padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+    gap: var(--sp-2);
+  }
+  .review-action-bar > button {
+    flex: 1;
+  }
+  .review-action-bar small {
+    width: 100%;
+  }
+  .review-summary,
+  .review-proposal {
+    padding: var(--sp-4);
+  }
+  .diff-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .category-card {
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--sp-4);
+  }
+  .category-card .actions {
+    gap: var(--sp-2);
+  }
+  .save-bar {
+    position: sticky;
+    bottom: 0;
+    padding: var(--sp-3);
+    padding-bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+    z-index: var(--z-action);
+  }
+  .save-bar .primary {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

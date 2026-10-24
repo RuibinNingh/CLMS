@@ -1,16 +1,16 @@
-# Local CLMS vault data (API configuration, ledger, drafts and uploaded images)
-/语文/.clms/
-
-# Python artifacts
+.venv/
 __pycache__/
 *.py[cod]
-
-# Local environments and secrets
-.venv/
-venv/
+.pytest_cache/
+.ruff_cache/
+frontend/node_modules/
+frontend/dist/
+data/
+data-archive/
 .env
 .env.*
 !.env.example
-
-# Browser acceptance artifacts
-.playwright-mcp/
+# Generated evidence can include private data. Add reviewed synthetic evidence explicitly.
+artifacts/
+frontend/test-results/
+frontend/playwright-report/

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">CLMS · 墨燕</title>
+  <desc id="description">墨青底色上，米白书页化为一只展翅的纸燕，浅青折面呼应翻页，朱红的喙像一笔批注。</desc>
+  <defs>
+    <linearGradient id="ink" x1="160" y1="64" x2="858" y2="986" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24554E"/>
+      <stop offset="1" stop-color="#123C38"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#ink)"/>
+  <g id="paper-swallow" transform="translate(0 -34)">
+    <path d="M546 472C469 384 365 337 206 312C256 402 317 491 384 558C426 590 488 570 525 535L546 472Z" fill="#F7F1E1"/>
+    <path d="M571 474C681 461 782 523 833 664C701 630 620 603 548 555L571 474Z" fill="#F7F1E1"/>
+    <path d="M571 474C652 537 753 601 833 664C701 630 620 603 548 555L571 474Z" fill="#B6CABE"/>
+    <path d="M350 743L447 576C480 526 515 486 559 459C568 422 591 391 615 391C633 391 648 401 655 416L668 429C632 456 620 493 584 539C552 586 506 624 456 650L424 779L406 699L350 743Z" fill="#F7F1E1"/>
+    <path d="M650 411L705 401L662 441L650 411Z" fill="#EA7458"/>
+  </g>
+</svg>

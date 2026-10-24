@@ -1,0 +1,2 @@
+# Preserve exact command output; generated logs may contain terminal whitespace.
+artifacts/**/*.log whitespace=-blank-at-eol,-blank-at-eof

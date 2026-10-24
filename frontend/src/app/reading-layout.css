@@ -1,0 +1,160 @@
+.prompt-material,
+.attempt-info {
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.attempt-tabs,
+.version-strip {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-1);
+}
+.attempt-tabs button,
+.version-strip button {
+  flex-shrink: 0;
+  flex-direction: row;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.attempt-tabs button {
+  flex-direction: row;
+  align-items: center;
+}
+.attempt-context {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.attempt-context p {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+.compact-details {
+  margin-top: 0;
+  padding: var(--sp-3) var(--sp-5);
+}
+.compact-details > summary {
+  padding: var(--sp-1) 0;
+}
+.compact-details[open] {
+  padding-bottom: var(--sp-5);
+}
+.version-heading {
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+.version-heading h2 {
+  font-family: var(--font-reading);
+  font-weight: 500;
+}
+.version-heading select {
+  width: auto;
+  max-width: 100%;
+}
+.version-information {
+  margin-bottom: var(--sp-5);
+}
+.task-feedback {
+  font-size: var(--text-xs);
+}
+.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.reading-layout,
+.comparison-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+.reading-paper,
+.reading-evaluation,
+.comparison-side {
+  min-width: 0;
+  scroll-margin-top: var(--sp-6);
+}
+.reading-switch,
+.comparison-switch {
+  display: none;
+  margin-bottom: var(--sp-4);
+}
+.comparison-content > .evaluation-panel {
+  margin-top: var(--sp-4);
+}
+.viewer {
+  overflow: hidden;
+  min-width: 0;
+}
+.viewer-toolbar,
+.viewer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+.viewer-toolbar strong {
+  font-size: var(--text-sm);
+}
+.viewer-toolbar button {
+  min-width: var(--control);
+  padding: var(--sp-2);
+}
+.viewer-toolbar output {
+  font-size: var(--text-xs);
+  min-width: 2.75rem;
+  text-align: center;
+}
+.page-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3) var(--sp-3);
+}
+.page-navigation label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+.page-navigation label > span {
+  white-space: nowrap;
+}
+.page-navigation select {
+  max-width: 13rem;
+  min-width: 6rem;
+  font-size: var(--text-input);
+}
+.page-navigation button {
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+  padding: var(--sp-2);
+}
+.viewer-canvas {
+  max-height: var(--reading-height);
+  min-height: 12rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-2);
+  padding: var(--sp-4);
+}
+.viewer-canvas img {
+  display: block;
+  max-width: none;
+  height: auto;
+  margin: auto;
+  background: var(--paper);
+  box-shadow: var(--shadow-paper);
+}
+.viewer-footer .button {
+  font-size: var(--text-xs);
+}
